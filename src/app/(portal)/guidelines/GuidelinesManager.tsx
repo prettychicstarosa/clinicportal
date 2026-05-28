@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
-import { Plus, Pencil, Trash2, X, ChevronRight, FileText } from "lucide-react";
+import { Plus, Pencil, Trash2, X, ChevronRight, FileText, Sparkles, CheckCircle2 } from "lucide-react";
 import type { GuidelineCategory, GuidelineItem } from "@/lib/types";
 
 type CatDraft = { id?: string; name: string; description: string };
@@ -43,15 +43,28 @@ function describeError(e: PgErrLike | null | undefined): string {
     return "The guidelines tables do not exist yet. Please run the 0006_guidelines.sql patch in Supabase, then refresh.";
   }
   if (code === "42501" || /permission denied|row[- ]level security|rls/i.test(msg)) {
-    return "Permission denied. Only owner or admin can add categories. Make sure you are signed in as an owner/admin and that RLS policies for guideline_categories are installed.";
+    return "Permission denied. Only owner or admin can edit guidelines. Sign in as owner/admin or check the RLS policies on guideline_categories / guideline_items.";
   }
   if (code === "23505" || /duplicate key|unique constraint/i.test(msg)) {
-    return "A category with this name already exists.";
+    return "That name is already in use. Please pick a different one.";
   }
   if (code === "23503" || /foreign key/i.test(msg)) {
-    return "Linked record missing. Please reload the page and try again.";
+    return "The linked category is missing. Please reload the page and try again.";
   }
   return msg || "Could not save. Please try again.";
+}
+
+function sortCats(a: GuidelineCategory, b: GuidelineCategory) {
+  if ((a.sort_order ?? 0) !== (b.sort_order ?? 0)) {
+    return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  }
+  return (a.name ?? "").localeCompare(b.name ?? "");
+}
+function sortItems(a: GuidelineItem, b: GuidelineItem) {
+  if ((a.sort_order ?? 0) !== (b.sort_order ?? 0)) {
+    return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  }
+  return (a.name ?? "").localeCompare(b.name ?? "");
 }
 
 export default function GuidelinesManager({
@@ -64,13 +77,8 @@ export default function GuidelinesManager({
   const router = useRouter();
   const [pending, start] = useTransition();
 
-  // Mirror props in local state so we can optimistically insert/update without
-  // waiting for a server round-trip.
   const [categories, setCategories] = useState<GuidelineCategory[]>(initialCategories);
   const [items, setItems] = useState<GuidelineItem[]>(initialItems);
-  useEffect(() => { setCategories(initialCategories); }, [initialCategories]);
-  useEffect(() => { setItems(initialItems); }, [initialItems]);
-
   const [selectedCatId, setSelectedCatId] = useState<string | null>(
     initialCategories[0]?.id ?? null
   );
@@ -79,7 +87,15 @@ export default function GuidelinesManager({
   const [itemDraft, setItemDraft] = useState<ItemDraft | null>(null);
   const [catErr, setCatErr] = useState<string | null>(null);
   const [itemErr, setItemErr] = useState<string | null>(null);
-  const [listErr, setListErr] = useState<string | null>(null);
+  const [pageErr, setPageErr] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // After a category is newly created, prompt the user to add procedures.
+  const [justCreatedCatId, setJustCreatedCatId] = useState<string | null>(null);
+
+  // Sync from props (e.g. when router.refresh re-fetches the server component).
+  useEffect(() => { setCategories(initialCategories); }, [initialCategories]);
+  useEffect(() => { setItems(initialItems); }, [initialItems]);
 
   useEffect(() => {
     if (!selectedCatId && categories.length > 0) {
@@ -89,14 +105,54 @@ export default function GuidelinesManager({
     }
   }, [categories, selectedCatId]);
 
+  // Auto-dismiss success messages.
+  useEffect(() => {
+    if (!successMsg) return;
+    const t = setTimeout(() => setSuccessMsg(null), 4000);
+    return () => clearTimeout(t);
+  }, [successMsg]);
+
   const selectedCat = useMemo(
     () => categories.find(c => c.id === selectedCatId) ?? null,
     [categories, selectedCatId]
   );
   const catItems = useMemo(
-    () => items.filter(i => i.category_id === selectedCatId),
+    () => items.filter(i => i.category_id === selectedCatId).sort(sortItems),
     [items, selectedCatId]
   );
+
+  // Reload everything from Supabase directly. Single source of truth after mutations.
+  const reloadAll = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const [catsRes, itemsRes] = await Promise.all([
+        supabase
+          .from("guideline_categories")
+          .select("*")
+          .order("sort_order", { ascending: true })
+          .order("name", { ascending: true }),
+        supabase
+          .from("guideline_items")
+          .select("*")
+          .order("sort_order", { ascending: true })
+          .order("name", { ascending: true })
+      ]);
+      if (catsRes.error) {
+        console.error("[guidelines] reload categories failed", catsRes.error);
+        return { ok: false, error: describeError(catsRes.error) };
+      }
+      if (itemsRes.error) {
+        console.error("[guidelines] reload items failed", itemsRes.error);
+        return { ok: false, error: describeError(itemsRes.error) };
+      }
+      setCategories((catsRes.data ?? []) as GuidelineCategory[]);
+      setItems((itemsRes.data ?? []) as GuidelineItem[]);
+      return { ok: true };
+    } catch (e: unknown) {
+      console.error("[guidelines] reload threw", e);
+      return { ok: false, error: e instanceof Error ? e.message : "Reload failed." };
+    }
+  }, []);
 
   function startNewCategory() {
     setCatErr(null);
@@ -106,10 +162,11 @@ export default function GuidelinesManager({
     setCatErr(null);
     setCatDraft({ id: cat.id, name: cat.name, description: cat.description ?? "" });
   }
-  function startNewItem() {
-    if (!selectedCatId) return;
+  function startNewItem(categoryId?: string) {
+    const target = categoryId ?? selectedCatId;
+    if (!target) return;
     setItemErr(null);
-    setItemDraft(emptyItem(selectedCatId));
+    setItemDraft(emptyItem(target));
   }
   function startEditItem(it: GuidelineItem) {
     setItemErr(null);
@@ -159,8 +216,11 @@ export default function GuidelinesManager({
             setCatErr(describeError(error));
             return;
           }
+          // Optimistic local update
           const updated = data as GuidelineCategory;
-          setCategories(prev => prev.map(c => (c.id === updated.id ? updated : c)));
+          setCategories(prev => prev.map(c => (c.id === updated.id ? updated : c)).sort(sortCats));
+          setCatDraft(null);
+          setSuccessMsg(`Category "${updated.name}" updated.`);
         } else {
           const { data, error } = await supabase
             .from("guideline_categories")
@@ -173,24 +233,34 @@ export default function GuidelinesManager({
             return;
           }
           const inserted = data as GuidelineCategory;
-          setCategories(prev => [...prev, inserted].sort(sortCats));
+          // Optimistic local update — guarantees the new card appears immediately.
+          setCategories(prev => {
+            const next = prev.some(c => c.id === inserted.id)
+              ? prev.map(c => c.id === inserted.id ? inserted : c)
+              : [...prev, inserted];
+            return next.sort(sortCats);
+          });
           setSelectedCatId(inserted.id);
+          setJustCreatedCatId(inserted.id);
+          setCatDraft(null);
+          setSuccessMsg(`Category "${inserted.name}" added. Add your first procedure below.`);
         }
 
-        setCatDraft(null);
+        // Authoritative reload from Supabase to stay in sync.
+        const r = await reloadAll();
+        if (!r.ok && r.error) setPageErr(r.error);
         router.refresh();
       } catch (e: unknown) {
         console.error("[guidelines] saveCategory threw", e);
-        const msg = e instanceof Error ? e.message : "Unexpected error while saving category.";
-        setCatErr(msg);
+        setCatErr(e instanceof Error ? e.message : "Unexpected error while saving category.");
       }
     });
   }
 
   function deleteCategory(cat: GuidelineCategory) {
-    if (!confirm(`Delete category "${cat.name}" and all its items?`)) return;
+    if (!confirm(`Delete category "${cat.name}" and all its procedures?`)) return;
     start(async () => {
-      setListErr(null);
+      setPageErr(null);
       try {
         const supabase = createSupabaseBrowserClient();
         const { error } = await supabase
@@ -199,17 +269,19 @@ export default function GuidelinesManager({
           .eq("id", cat.id);
         if (error) {
           console.error("[guidelines] delete category failed", error);
-          setListErr(describeError(error));
+          setPageErr(describeError(error));
           return;
         }
         setCategories(prev => prev.filter(c => c.id !== cat.id));
         setItems(prev => prev.filter(i => i.category_id !== cat.id));
         if (selectedCatId === cat.id) setSelectedCatId(null);
+        if (justCreatedCatId === cat.id) setJustCreatedCatId(null);
+        setSuccessMsg(`Category "${cat.name}" deleted.`);
+        await reloadAll();
         router.refresh();
       } catch (e: unknown) {
         console.error("[guidelines] deleteCategory threw", e);
-        const msg = e instanceof Error ? e.message : "Unexpected error while deleting category.";
-        setListErr(msg);
+        setPageErr(e instanceof Error ? e.message : "Unexpected error while deleting category.");
       }
     });
   }
@@ -255,7 +327,9 @@ export default function GuidelinesManager({
             return;
           }
           const updated = data as GuidelineItem;
-          setItems(prev => prev.map(i => (i.id === updated.id ? updated : i)));
+          setItems(prev => prev.map(i => (i.id === updated.id ? updated : i)).sort(sortItems));
+          setItemDraft(null);
+          setSuccessMsg(`Procedure "${updated.name}" updated.`);
         } else {
           const { data, error } = await supabase
             .from("guideline_items")
@@ -268,15 +342,24 @@ export default function GuidelinesManager({
             return;
           }
           const inserted = data as GuidelineItem;
-          setItems(prev => [...prev, inserted].sort(sortItems));
+          setItems(prev => {
+            const next = prev.some(i => i.id === inserted.id)
+              ? prev.map(i => i.id === inserted.id ? inserted : i)
+              : [...prev, inserted];
+            return next.sort(sortItems);
+          });
+          // Once they add an item, clear the "just created" prompt.
+          if (justCreatedCatId === inserted.category_id) setJustCreatedCatId(null);
+          setItemDraft(null);
+          setSuccessMsg(`Procedure "${inserted.name}" saved.`);
         }
 
-        setItemDraft(null);
+        const r = await reloadAll();
+        if (!r.ok && r.error) setPageErr(r.error);
         router.refresh();
       } catch (e: unknown) {
         console.error("[guidelines] saveItem threw", e);
-        const msg = e instanceof Error ? e.message : "Unexpected error while saving item.";
-        setItemErr(msg);
+        setItemErr(e instanceof Error ? e.message : "Unexpected error while saving procedure.");
       }
     });
   }
@@ -284,7 +367,7 @@ export default function GuidelinesManager({
   function deleteItem(it: GuidelineItem) {
     if (!confirm(`Delete "${it.name}"?`)) return;
     start(async () => {
-      setListErr(null);
+      setPageErr(null);
       try {
         const supabase = createSupabaseBrowserClient();
         const { error } = await supabase
@@ -293,18 +376,22 @@ export default function GuidelinesManager({
           .eq("id", it.id);
         if (error) {
           console.error("[guidelines] delete item failed", error);
-          setListErr(describeError(error));
+          setPageErr(describeError(error));
           return;
         }
         setItems(prev => prev.filter(i => i.id !== it.id));
+        setSuccessMsg(`Procedure "${it.name}" deleted.`);
+        await reloadAll();
         router.refresh();
       } catch (e: unknown) {
         console.error("[guidelines] deleteItem threw", e);
-        const msg = e instanceof Error ? e.message : "Unexpected error while deleting item.";
-        setListErr(msg);
+        setPageErr(e instanceof Error ? e.message : "Unexpected error while deleting procedure.");
       }
     });
   }
+
+  const showJustCreatedPrompt =
+    !!justCreatedCatId && justCreatedCatId === selectedCatId && catItems.length === 0;
 
   return (
     <div className="space-y-4">
@@ -322,7 +409,10 @@ export default function GuidelinesManager({
         </button>
       </div>
 
-      {listErr && <ErrorBanner message={listErr} onDismiss={() => setListErr(null)} />}
+      {successMsg && (
+        <SuccessBanner message={successMsg} onDismiss={() => setSuccessMsg(null)} />
+      )}
+      {pageErr && <ErrorBanner message={pageErr} onDismiss={() => setPageErr(null)} />}
 
       {categories.length === 0 ? (
         <div className="card text-center py-10">
@@ -344,7 +434,7 @@ export default function GuidelinesManager({
               <CategoryList
                 categories={categories}
                 selectedId={selectedCatId}
-                onSelect={setSelectedCatId}
+                onSelect={(id) => { setSelectedCatId(id); setJustCreatedCatId(null); }}
                 onEdit={startEditCategory}
                 onDelete={deleteCategory}
                 canManage
@@ -355,7 +445,7 @@ export default function GuidelinesManager({
               <select
                 className="input"
                 value={selectedCatId ?? ""}
-                onChange={(e) => setSelectedCatId(e.target.value || null)}
+                onChange={(e) => { setSelectedCatId(e.target.value || null); setJustCreatedCatId(null); }}
               >
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
@@ -384,14 +474,23 @@ export default function GuidelinesManager({
 
           <section className="space-y-3">
             {selectedCat ? (
-              <CategoryDetail
-                category={selectedCat}
-                items={catItems}
-                canManage
-                onAddItem={startNewItem}
-                onEditItem={startEditItem}
-                onDeleteItem={deleteItem}
-              />
+              <>
+                {showJustCreatedPrompt && (
+                  <NextStepPrompt
+                    categoryName={selectedCat.name}
+                    onAdd={() => startNewItem(selectedCat.id)}
+                    onDismiss={() => setJustCreatedCatId(null)}
+                  />
+                )}
+                <CategoryDetail
+                  category={selectedCat}
+                  items={catItems}
+                  canManage
+                  onAddItem={() => startNewItem(selectedCat.id)}
+                  onEditItem={startEditItem}
+                  onDeleteItem={deleteItem}
+                />
+              </>
             ) : (
               <div className="card text-sm" style={{ color: "var(--color-muted)" }}>
                 Select a category to view its procedures.
@@ -450,8 +549,8 @@ export default function GuidelinesManager({
 
       {itemDraft && (
         <Modal
-          title={itemDraft.id ? "Edit Item" : "New Item"}
-          subtitle={selectedCat?.name}
+          title={itemDraft.id ? "Edit Procedure" : "New Procedure"}
+          subtitle={categories.find(c => c.id === itemDraft.category_id)?.name ?? selectedCat?.name}
           wide
           onClose={() => { setItemDraft(null); setItemErr(null); }}
         >
@@ -550,7 +649,7 @@ export default function GuidelinesManager({
                 Cancel
               </button>
               <button type="submit" className="btn-primary" disabled={pending}>
-                {pending ? "Saving..." : "Save Item"}
+                {pending ? "Saving..." : "Save Procedure"}
               </button>
             </div>
           </form>
@@ -560,18 +659,72 @@ export default function GuidelinesManager({
   );
 }
 
-function sortCats(a: GuidelineCategory, b: GuidelineCategory) {
-  if ((a.sort_order ?? 0) !== (b.sort_order ?? 0)) {
-    return (a.sort_order ?? 0) - (b.sort_order ?? 0);
-  }
-  return a.name.localeCompare(b.name);
+function NextStepPrompt({
+  categoryName,
+  onAdd,
+  onDismiss
+}: {
+  categoryName: string;
+  onAdd: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      className="relative rounded-2xl border p-4 md:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+      style={{
+        background: "linear-gradient(135deg, var(--color-surface-2) 0%, var(--color-surface) 100%)",
+        borderColor: "var(--color-accent)"
+      }}
+    >
+      <button
+        type="button"
+        aria-label="Dismiss"
+        className="absolute top-2 right-2 rounded-full p-1 hover:bg-black/5 transition"
+        onClick={onDismiss}
+      >
+        <X size={14} style={{ color: "var(--color-muted)" }} />
+      </button>
+      <div className="flex items-start gap-3 pr-6">
+        <Sparkles size={18} className="mt-0.5 shrink-0" style={{ color: "var(--color-accent)" }} />
+        <div>
+          <p className="font-serif text-base" style={{ color: "var(--color-primary)" }}>
+            What procedure / service do you want to add under {categoryName}?
+          </p>
+          <p className="text-xs mt-1" style={{ color: "var(--color-muted)" }}>
+            Add at least one procedure so staff can reference it. You can add more anytime.
+          </p>
+        </div>
+      </div>
+      <button type="button" className="btn-primary self-start md:self-auto" onClick={onAdd}>
+        <Plus size={16} /> Add Procedure
+      </button>
+    </div>
+  );
 }
 
-function sortItems(a: GuidelineItem, b: GuidelineItem) {
-  if ((a.sort_order ?? 0) !== (b.sort_order ?? 0)) {
-    return (a.sort_order ?? 0) - (b.sort_order ?? 0);
-  }
-  return a.name.localeCompare(b.name);
+function SuccessBanner({ message, onDismiss }: { message: string; onDismiss?: () => void }) {
+  return (
+    <div
+      className="flex items-start justify-between gap-3 rounded-xl border px-3 py-2 text-sm"
+      style={{ background: "#E8F5EE", borderColor: "#B5DCC6", color: "#1F6E3D" }}
+      role="status"
+    >
+      <div className="flex items-start gap-2">
+        <CheckCircle2 size={16} className="mt-0.5" />
+        <span className="whitespace-pre-line">{message}</span>
+      </div>
+      {onDismiss && (
+        <button
+          type="button"
+          aria-label="Dismiss"
+          className="opacity-70 hover:opacity-100"
+          onClick={onDismiss}
+        >
+          <X size={14} />
+        </button>
+      )}
+    </div>
+  );
 }
 
 function ErrorBanner({ message, onDismiss }: { message: string; onDismiss?: () => void }) {
@@ -705,7 +858,7 @@ function CategoryDetail({
         </div>
         {canManage && (
           <button type="button" className="btn-primary self-start md:self-auto" onClick={onAddItem}>
-            <Plus size={16} /> Add Item
+            <Plus size={16} /> Add Procedure
           </button>
         )}
       </div>
@@ -720,7 +873,7 @@ function CategoryDetail({
           </p>
           {canManage && (
             <button type="button" className="btn-ghost mt-3 !text-xs" onClick={onAddItem}>
-              <Plus size={14} /> Add the first item
+              <Plus size={14} /> Add the first procedure
             </button>
           )}
         </div>

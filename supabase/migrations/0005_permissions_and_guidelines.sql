@@ -1,250 +1,288 @@
 -- =========================================================
--- PRETTY CHIC — STAFF PERMISSIONS + GUIDELINES + RE-SYNC
--- Safe to re-run.
+-- PRETTY CHIC PORTAL FULL UPDATED PATCH
 -- =========================================================
 
--- 1. INCOME (in case 0004 was not applied)
--- ---------------------------------------------------------
-create table if not exists public.income (
-  id          uuid primary key default gen_random_uuid(),
-  month       int  not null check (month between 1 and 12),
-  year        int  not null check (year between 2000 and 2100),
-  week1       numeric(12,2) not null default 0,
-  week2       numeric(12,2) not null default 0,
-  week3       numeric(12,2) not null default 0,
-  week4       numeric(12,2) not null default 0,
-  week5       numeric(12,2) not null default 0,
-  notes       text,
-  created_by  uuid references public.profiles(id) on delete set null,
-  updated_by  uuid references public.profiles(id) on delete set null,
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
-);
+-- OWNER / ROLES
+alter table public.profiles drop constraint if exists profiles_role_check;
 
-create unique index if not exists income_month_year_unique
-  on public.income (year, month);
+alter table public.profiles
+add constraint profiles_role_check
+check (role in ('owner','admin','staff','receptionist'));
 
-create index if not exists income_year_idx on public.income (year);
+alter table public.profiles
+add column if not exists username text;
 
-create or replace function public.touch_income_updated_at()
-returns trigger as $$
-begin
-  NEW.updated_at := now();
-  return NEW;
-end;
-$$ language plpgsql;
+alter table public.profiles
+add column if not exists phone text;
 
-drop trigger if exists trg_income_updated_at on public.income;
-create trigger trg_income_updated_at
-  before update on public.income
-  for each row execute function public.touch_income_updated_at();
+create unique index if not exists profiles_username_unique
+on public.profiles (lower(username))
+where username is not null;
 
-alter table public.income enable row level security;
-
-drop policy if exists income_select on public.income;
-create policy income_select on public.income
-  for select using (auth.uid() is not null);
-
-drop policy if exists income_insert on public.income;
-create policy income_insert on public.income
-  for insert with check (public.is_admin());
-
-drop policy if exists income_update on public.income;
-create policy income_update on public.income
-  for update using (public.is_admin())
-                with check (public.is_admin());
-
-drop policy if exists income_delete on public.income;
-create policy income_delete on public.income
-  for delete using (public.is_admin());
-
--- 2. APPOINTMENTS — ensure required columns exist
--- ---------------------------------------------------------
-alter table public.appointments
-  add column if not exists package_id uuid references public.packages(id) on delete set null;
-
-alter table public.appointments
-  add column if not exists package_name text;
-
-alter table public.appointments
-  add column if not exists generated_from_package boolean default false;
-
-alter table public.appointments
-  add column if not exists session_index int;
-
-create index if not exists appointments_package_idx on public.appointments(package_id);
-create index if not exists appointments_generated_idx on public.appointments(generated_from_package);
-
--- 3. STAFF PERMISSIONS — per-staff tab visibility
--- ---------------------------------------------------------
-create table if not exists public.staff_permissions (
-  profile_id    uuid primary key references public.profiles(id) on delete cascade,
-  dashboard     boolean not null default true,
-  clients       boolean not null default true,
-  appointments  boolean not null default true,
-  packages      boolean not null default true,
-  payments      boolean not null default true,
-  expenses      boolean not null default false,
-  inventory     boolean not null default true,
-  income        boolean not null default false,
-  reports       boolean not null default false,
-  settings      boolean not null default false,
-  guidelines    boolean not null default true,
-  updated_at    timestamptz not null default now(),
-  updated_by    uuid references public.profiles(id) on delete set null
-);
-
-create or replace function public.touch_staff_permissions_updated_at()
-returns trigger as $$
-begin
-  NEW.updated_at := now();
-  return NEW;
-end;
-$$ language plpgsql;
-
-drop trigger if exists trg_staff_permissions_updated_at on public.staff_permissions;
-create trigger trg_staff_permissions_updated_at
-  before update on public.staff_permissions
-  for each row execute function public.touch_staff_permissions_updated_at();
-
-alter table public.staff_permissions enable row level security;
-
--- Each user can read their own row; owner/admin can read all
-drop policy if exists staff_permissions_select on public.staff_permissions;
-create policy staff_permissions_select on public.staff_permissions
-  for select using (public.is_admin() or auth.uid() = profile_id);
-
-drop policy if exists staff_permissions_insert on public.staff_permissions;
-create policy staff_permissions_insert on public.staff_permissions
-  for insert with check (public.is_admin());
-
-drop policy if exists staff_permissions_update on public.staff_permissions;
-create policy staff_permissions_update on public.staff_permissions
-  for update using (public.is_admin()) with check (public.is_admin());
-
-drop policy if exists staff_permissions_delete on public.staff_permissions;
-create policy staff_permissions_delete on public.staff_permissions
-  for delete using (public.is_admin());
-
--- Seed a default permissions row for every existing profile that doesn't have one
-insert into public.staff_permissions (profile_id)
-select p.id from public.profiles p
-where not exists (
-  select 1 from public.staff_permissions sp where sp.profile_id = p.id
-);
-
--- Auto-create a default permissions row for any new profile
-create or replace function public.ensure_staff_permissions()
-returns trigger as $$
-begin
-  insert into public.staff_permissions (profile_id)
-  values (NEW.id)
-  on conflict (profile_id) do nothing;
-  return NEW;
-end;
-$$ language plpgsql security definer;
-
-drop trigger if exists trg_ensure_staff_permissions on public.profiles;
-create trigger trg_ensure_staff_permissions
-  after insert on public.profiles
-  for each row execute function public.ensure_staff_permissions();
-
--- 4. GUIDELINES — categories + items
--- ---------------------------------------------------------
-create table if not exists public.guideline_categories (
-  id          uuid primary key default gen_random_uuid(),
-  name        text not null,
-  description text,
-  sort_order  int not null default 0,
-  created_by  uuid references public.profiles(id) on delete set null,
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
-);
-
-create unique index if not exists guideline_categories_name_unique
-  on public.guideline_categories (lower(name));
-
-create table if not exists public.guideline_items (
-  id            uuid primary key default gen_random_uuid(),
-  category_id   uuid not null references public.guideline_categories(id) on delete cascade,
-  name          text not null,
-  time          text,
-  procedure     text,
-  internal_cost numeric(12,2) not null default 0,
-  sort_order    int not null default 0,
-  created_by    uuid references public.profiles(id) on delete set null,
-  created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
-);
-
-create index if not exists guideline_items_category_idx
-  on public.guideline_items (category_id);
-
-create or replace function public.touch_updated_at()
-returns trigger as $$
-begin
-  NEW.updated_at := now();
-  return NEW;
-end;
-$$ language plpgsql;
-
-drop trigger if exists trg_guideline_categories_updated_at on public.guideline_categories;
-create trigger trg_guideline_categories_updated_at
-  before update on public.guideline_categories
-  for each row execute function public.touch_updated_at();
-
-drop trigger if exists trg_guideline_items_updated_at on public.guideline_items;
-create trigger trg_guideline_items_updated_at
-  before update on public.guideline_items
-  for each row execute function public.touch_updated_at();
-
-alter table public.guideline_categories enable row level security;
-alter table public.guideline_items      enable row level security;
-
--- Helper: does the current user have the "guidelines" tab on?
-create or replace function public.can_view_guidelines() returns boolean as $$
-  select coalesce(
-    (select sp.guidelines from public.staff_permissions sp where sp.profile_id = auth.uid()),
-    true
-  ) and exists (
-    select 1 from public.profiles p where p.id = auth.uid() and p.is_active = true
+create or replace function public.is_owner() returns boolean as $$
+  select exists(
+    select 1 from public.profiles p
+    where p.id = auth.uid()
+    and p.role = 'owner'
+    and p.is_active = true
   );
 $$ language sql stable security definer;
 
-drop policy if exists guideline_categories_select on public.guideline_categories;
-create policy guideline_categories_select on public.guideline_categories
-  for select using (public.is_admin() or public.can_view_guidelines());
+create or replace function public.is_admin() returns boolean as $$
+  select exists(
+    select 1 from public.profiles p
+    where p.id = auth.uid()
+    and p.role in ('owner','admin')
+    and p.is_active = true
+  );
+$$ language sql stable security definer;
 
-drop policy if exists guideline_categories_insert on public.guideline_categories;
-create policy guideline_categories_insert on public.guideline_categories
-  for insert with check (public.is_admin());
+-- SETTINGS / LOGO
+alter table public.settings
+add column if not exists clinic_phone text;
 
-drop policy if exists guideline_categories_update on public.guideline_categories;
-create policy guideline_categories_update on public.guideline_categories
-  for update using (public.is_admin()) with check (public.is_admin());
+alter table public.settings
+add column if not exists clinic_address text;
 
-drop policy if exists guideline_categories_delete on public.guideline_categories;
-create policy guideline_categories_delete on public.guideline_categories
-  for delete using (public.is_admin());
+alter table public.settings
+add column if not exists logo_url text;
 
-drop policy if exists guideline_items_select on public.guideline_items;
-create policy guideline_items_select on public.guideline_items
-  for select using (public.is_admin() or public.can_view_guidelines());
+alter table public.settings
+add column if not exists loading_logo_url text;
 
-drop policy if exists guideline_items_insert on public.guideline_items;
-create policy guideline_items_insert on public.guideline_items
-  for insert with check (public.is_admin());
+-- CLIENTS
+alter table public.clients
+add column if not exists last_visit date;
 
-drop policy if exists guideline_items_update on public.guideline_items;
-create policy guideline_items_update on public.guideline_items
-  for update using (public.is_admin()) with check (public.is_admin());
+alter table public.clients
+add column if not exists emergency_contact text;
 
-drop policy if exists guideline_items_delete on public.guideline_items;
-create policy guideline_items_delete on public.guideline_items
-  for delete using (public.is_admin());
+alter table public.clients
+add column if not exists consent_notes text;
 
--- 5. REFRESH PostgREST schema cache
--- ---------------------------------------------------------
+-- PACKAGES
+alter table public.packages
+add column if not exists amount_paid numeric(12,2) default 0;
+
+alter table public.packages
+add column if not exists balance numeric(12,2) default 0;
+
+alter table public.packages
+add column if not exists payment_status text default 'Unpaid';
+
+alter table public.packages
+add column if not exists remaining_sessions integer default 0;
+
+alter table public.packages
+add column if not exists interval_type text default 'Weekly';
+
+alter table public.packages
+add column if not exists interval_days integer default 7;
+
+alter table public.packages
+add column if not exists interval_label text default 'Weekly';
+
+alter table public.packages
+add column if not exists start_date date;
+
+alter table public.packages
+add column if not exists valid_until date;
+
+alter table public.packages
+add column if not exists status text default 'Active';
+
+alter table public.packages
+add column if not exists notes text;
+
+alter table public.packages
+add column if not exists first_appointment_date date;
+
+alter table public.packages
+add column if not exists first_appointment_time time;
+
+-- APPOINTMENTS
+alter table public.appointments
+add column if not exists package_id uuid references public.packages(id) on delete set null;
+
+alter table public.appointments
+add column if not exists package_name text;
+
+alter table public.appointments
+add column if not exists generated_from_package boolean default false;
+
+-- PAYMENTS
+alter table public.payments
+add column if not exists package_id uuid references public.packages(id) on delete cascade;
+
+alter table public.payments
+add column if not exists payment_status text default 'Paid';
+
+alter table public.payments
+add column if not exists payment_date date default current_date;
+
+-- INVENTORY
+alter table public.inventory
+add column if not exists containers numeric(12,2) default 0;
+
+alter table public.inventory
+add column if not exists container_type text default 'vial';
+
+alter table public.inventory
+add column if not exists container_size numeric(12,2) default 1;
+
+alter table public.inventory
+add column if not exists measurement_unit text default 'ml';
+
+alter table public.inventory
+add column if not exists total_usable_quantity numeric(12,2) default 0;
+
+-- INVENTORY LOGS
+alter table public.inventory_logs
+add column if not exists client_id uuid references public.clients(id) on delete set null;
+
+alter table public.inventory_logs
+add column if not exists appointment_id uuid references public.appointments(id) on delete set null;
+
+alter table public.inventory_logs
+add column if not exists unit text;
+
+alter table public.inventory_logs
+add column if not exists note text;
+
+-- AUTO PACKAGE PAYMENT UPDATE
+create or replace function public.update_package_payment()
+returns trigger as $$
+begin
+  if NEW.package_id is not null then
+    update public.packages
+    set
+      amount_paid = (
+        select coalesce(sum(amount),0)
+        from public.payments
+        where package_id = NEW.package_id
+      ),
+      balance = greatest(
+        price - (
+          select coalesce(sum(amount),0)
+          from public.payments
+          where package_id = NEW.package_id
+        ),
+        0
+      ),
+      payment_status =
+        case
+          when price - (
+            select coalesce(sum(amount),0)
+            from public.payments
+            where package_id = NEW.package_id
+          ) <= 0 then 'Paid'
+          when (
+            select coalesce(sum(amount),0)
+            from public.payments
+            where package_id = NEW.package_id
+          ) > 0 then 'Partial'
+          else 'Unpaid'
+        end
+    where id = NEW.package_id;
+  end if;
+
+  update public.clients
+  set
+    balance = (
+      select coalesce(sum(balance),0)
+      from public.packages
+      where client_id = NEW.client_id
+    ),
+    payment_status =
+      case
+        when (
+          select coalesce(sum(balance),0)
+          from public.packages
+          where client_id = NEW.client_id
+        ) <= 0 then 'Paid'
+        when (
+          select coalesce(sum(amount_paid),0)
+          from public.packages
+          where client_id = NEW.client_id
+        ) > 0 then 'Partial'
+        else 'Unpaid'
+      end
+  where id = NEW.client_id;
+
+  return NEW;
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_update_package_payment on public.payments;
+
+create trigger trg_update_package_payment
+after insert or update on public.payments
+for each row execute function public.update_package_payment();
+
+-- AUTO REMAINING SESSIONS WHEN APPOINTMENT DONE
+create or replace function public.update_remaining_sessions()
+returns trigger as $$
+begin
+  if NEW.status = 'Done'
+     and OLD.status is distinct from 'Done'
+     and NEW.package_id is not null then
+
+    update public.packages
+    set
+      used_sessions = used_sessions + 1,
+      remaining_sessions = greatest(total_sessions - (used_sessions + 1), 0)
+    where id = NEW.package_id;
+
+  end if;
+
+  return NEW;
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_update_remaining_sessions on public.appointments;
+
+create trigger trg_update_remaining_sessions
+after update on public.appointments
+for each row execute function public.update_remaining_sessions();
+
+-- OWNER PROTECTION
+create or replace function public.prevent_owner_modification()
+returns trigger as $$
+begin
+  if OLD.role = 'owner' then
+    if TG_OP = 'DELETE' then
+      raise exception 'Owner account cannot be deleted';
+    end if;
+
+    if NEW.role <> 'owner' then
+      raise exception 'Owner role cannot be changed';
+    end if;
+
+    if NEW.is_active = false then
+      raise exception 'Owner account cannot be disabled';
+    end if;
+  end if;
+
+  return NEW;
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_prevent_owner_modification on public.profiles;
+
+create trigger trg_prevent_owner_modification
+before update or delete on public.profiles
+for each row execute function public.prevent_owner_modification();
+
+-- SET OWNER ACCOUNT
+update public.profiles
+set
+  role = 'owner',
+  full_name = coalesce(nullif(full_name,''), 'Pretty Chic Owner'),
+  username = coalesce(username, 'owner'),
+  is_active = true
+where email = 'prettychicstarosa@gmail.com';
+
+-- REFRESH SUPABASE SCHEMA CACHE
 notify pgrst, 'reload schema';
 
 -- =========================================================

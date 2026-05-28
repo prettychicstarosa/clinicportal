@@ -211,9 +211,13 @@ export type GuidelineItem = {
   id: string;
   category_id: string;
   name: string;
+  medicine_used: string | null;
+  syringe_quantity: string | null;
   time: string | null;
-  procedure: string | null;
+  intensity: string | null;
   internal_cost: number;
+  procedure: string | null;
+  notes: string | null;
   sort_order: number;
   created_by: string | null;
   created_at: string;

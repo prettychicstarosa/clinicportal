@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
@@ -42,14 +42,17 @@ function describeError(e: PgErrLike | null | undefined): string {
   if (code === "42P01" || /relation .* does not exist/i.test(msg)) {
     return "The guidelines tables do not exist yet. Please run the 0006_guidelines.sql patch in Supabase, then refresh.";
   }
+  if (code === "42703" || /column .* does not exist/i.test(msg)) {
+    return `Schema mismatch: ${msg}. Re-run the latest 0006_guidelines.sql patch in Supabase to add the missing columns.`;
+  }
   if (code === "42501" || /permission denied|row[- ]level security|rls/i.test(msg)) {
-    return "Permission denied. Only owner or admin can edit guidelines. Sign in as owner/admin or check the RLS policies on guideline_categories / guideline_items.";
+    return "Permission denied. Only owner or admin can edit guidelines. Make sure you are signed in as an owner/admin and that RLS policies for guideline_categories / guideline_items are installed.";
   }
   if (code === "23505" || /duplicate key|unique constraint/i.test(msg)) {
     return "That name is already in use. Please pick a different one.";
   }
   if (code === "23503" || /foreign key/i.test(msg)) {
-    return "The linked category is missing. Please reload the page and try again.";
+    return "Linked record missing. Please reload the page and try again.";
   }
   return msg || "Could not save. Please try again.";
 }
@@ -68,17 +71,20 @@ function sortItems(a: GuidelineItem, b: GuidelineItem) {
 }
 
 export default function GuidelinesManager({
-  categories: initialCategories,
-  items: initialItems
+  initialCategories,
+  initialItems
 }: {
-  categories: GuidelineCategory[];
-  items: GuidelineItem[];
+  initialCategories: GuidelineCategory[];
+  initialItems: GuidelineItem[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
 
-  const [categories, setCategories] = useState<GuidelineCategory[]>(initialCategories);
-  const [items, setItems] = useState<GuidelineItem[]>(initialItems);
+  // IMPORTANT: props are used ONLY as the initial seed. After mount we own
+  // the state. Never re-sync from props — otherwise a stale server fetch from
+  // router.refresh() can wipe out a freshly-inserted row.
+  const [categories, setCategories] = useState<GuidelineCategory[]>(() => [...initialCategories].sort(sortCats));
+  const [items, setItems] = useState<GuidelineItem[]>(() => [...initialItems].sort(sortItems));
   const [selectedCatId, setSelectedCatId] = useState<string | null>(
     initialCategories[0]?.id ?? null
   );
@@ -89,13 +95,7 @@ export default function GuidelinesManager({
   const [itemErr, setItemErr] = useState<string | null>(null);
   const [pageErr, setPageErr] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-
-  // After a category is newly created, prompt the user to add procedures.
   const [justCreatedCatId, setJustCreatedCatId] = useState<string | null>(null);
-
-  // Sync from props (e.g. when router.refresh re-fetches the server component).
-  useEffect(() => { setCategories(initialCategories); }, [initialCategories]);
-  useEffect(() => { setItems(initialItems); }, [initialItems]);
 
   useEffect(() => {
     if (!selectedCatId && categories.length > 0) {
@@ -105,7 +105,6 @@ export default function GuidelinesManager({
     }
   }, [categories, selectedCatId]);
 
-  // Auto-dismiss success messages.
   useEffect(() => {
     if (!successMsg) return;
     const t = setTimeout(() => setSuccessMsg(null), 4000);
@@ -121,7 +120,8 @@ export default function GuidelinesManager({
     [items, selectedCatId]
   );
 
-  // Reload everything from Supabase directly. Single source of truth after mutations.
+  // Refetch the truth from Supabase via the browser client. Used after every
+  // mutation and once on mount to make sure we are in sync.
   const reloadAll = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
     try {
       const supabase = createSupabaseBrowserClient();
@@ -145,14 +145,25 @@ export default function GuidelinesManager({
         console.error("[guidelines] reload items failed", itemsRes.error);
         return { ok: false, error: describeError(itemsRes.error) };
       }
-      setCategories((catsRes.data ?? []) as GuidelineCategory[]);
-      setItems((itemsRes.data ?? []) as GuidelineItem[]);
+      const cats = ((catsRes.data ?? []) as GuidelineCategory[]).slice().sort(sortCats);
+      const its  = ((itemsRes.data ?? []) as GuidelineItem[]).slice().sort(sortItems);
+      console.info("[guidelines] reload ok — categories:", cats.length, "items:", its.length);
+      setCategories(cats);
+      setItems(its);
       return { ok: true };
     } catch (e: unknown) {
       console.error("[guidelines] reload threw", e);
       return { ok: false, error: e instanceof Error ? e.message : "Reload failed." };
     }
   }, []);
+
+  // One reload on mount to defeat any stale SSR / cache state.
+  const didInitialReload = useRef(false);
+  useEffect(() => {
+    if (didInitialReload.current) return;
+    didInitialReload.current = true;
+    reloadAll();
+  }, [reloadAll]);
 
   function startNewCategory() {
     setCatErr(null);
@@ -195,58 +206,67 @@ export default function GuidelinesManager({
         const supabase = createSupabaseBrowserClient();
         const { data: { user }, error: authErr } = await supabase.auth.getUser();
         if (authErr || !user) {
+          console.error("[guidelines] auth check failed", authErr);
           setCatErr("You are not signed in. Please log in again.");
           return;
         }
 
-        const payload = {
-          name,
-          description: catDraft.description.trim() || null
-        };
-
         if (catDraft.id) {
+          const payload = {
+            name,
+            description: catDraft.description.trim() || null
+          };
+          console.info("[guidelines] updating category", catDraft.id, payload);
           const { data, error } = await supabase
             .from("guideline_categories")
             .update(payload)
             .eq("id", catDraft.id)
-            .select("*")
+            .select()
             .single();
-          if (error) {
+          if (error || !data) {
             console.error("[guidelines] update category failed", error);
             setCatErr(describeError(error));
             return;
           }
-          // Optimistic local update
           const updated = data as GuidelineCategory;
           setCategories(prev => prev.map(c => (c.id === updated.id ? updated : c)).sort(sortCats));
           setCatDraft(null);
           setSuccessMsg(`Category "${updated.name}" updated.`);
         } else {
+          // Insert ONLY the fields the spec asks for. All other columns have
+          // safe defaults in the DB (sort_order default 0, timestamps default now()).
+          const payload = {
+            name,
+            description: catDraft.description.trim() || null,
+            created_by: user.id,
+            sort_order: 0
+          };
+          console.info("[guidelines] inserting category", payload);
           const { data, error } = await supabase
             .from("guideline_categories")
-            .insert({ ...payload, created_by: user.id })
-            .select("*")
+            .insert(payload)
+            .select()
             .single();
-          if (error) {
+          if (error || !data) {
             console.error("[guidelines] insert category failed", error);
             setCatErr(describeError(error));
             return;
           }
           const inserted = data as GuidelineCategory;
-          // Optimistic local update — guarantees the new card appears immediately.
+          console.info("[guidelines] insert category ok", inserted);
           setCategories(prev => {
             const next = prev.some(c => c.id === inserted.id)
-              ? prev.map(c => c.id === inserted.id ? inserted : c)
+              ? prev.map(c => (c.id === inserted.id ? inserted : c))
               : [...prev, inserted];
             return next.sort(sortCats);
           });
           setSelectedCatId(inserted.id);
           setJustCreatedCatId(inserted.id);
           setCatDraft(null);
-          setSuccessMsg(`Category "${inserted.name}" added. Add your first procedure below.`);
+          setSuccessMsg(`Category "${inserted.name}" added. Now add your first procedure below.`);
         }
 
-        // Authoritative reload from Supabase to stay in sync.
+        // Authoritative refetch — guarantees the list matches the DB.
         const r = await reloadAll();
         if (!r.ok && r.error) setPageErr(r.error);
         router.refresh();
@@ -298,11 +318,12 @@ export default function GuidelinesManager({
         const supabase = createSupabaseBrowserClient();
         const { data: { user }, error: authErr } = await supabase.auth.getUser();
         if (authErr || !user) {
+          console.error("[guidelines] auth check failed", authErr);
           setItemErr("You are not signed in. Please log in again.");
           return;
         }
 
-        const payload = {
+        const basePayload = {
           category_id: itemDraft.category_id,
           name,
           medicine_used: itemDraft.medicine_used.trim() || null,
@@ -315,13 +336,14 @@ export default function GuidelinesManager({
         };
 
         if (itemDraft.id) {
+          console.info("[guidelines] updating item", itemDraft.id, basePayload);
           const { data, error } = await supabase
             .from("guideline_items")
-            .update(payload)
+            .update(basePayload)
             .eq("id", itemDraft.id)
-            .select("*")
+            .select()
             .single();
-          if (error) {
+          if (error || !data) {
             console.error("[guidelines] update item failed", error);
             setItemErr(describeError(error));
             return;
@@ -331,24 +353,26 @@ export default function GuidelinesManager({
           setItemDraft(null);
           setSuccessMsg(`Procedure "${updated.name}" updated.`);
         } else {
+          const insertPayload = { ...basePayload, created_by: user.id };
+          console.info("[guidelines] inserting item", insertPayload);
           const { data, error } = await supabase
             .from("guideline_items")
-            .insert({ ...payload, created_by: user.id })
-            .select("*")
+            .insert(insertPayload)
+            .select()
             .single();
-          if (error) {
+          if (error || !data) {
             console.error("[guidelines] insert item failed", error);
             setItemErr(describeError(error));
             return;
           }
           const inserted = data as GuidelineItem;
+          console.info("[guidelines] insert item ok", inserted);
           setItems(prev => {
             const next = prev.some(i => i.id === inserted.id)
-              ? prev.map(i => i.id === inserted.id ? inserted : i)
+              ? prev.map(i => (i.id === inserted.id ? inserted : i))
               : [...prev, inserted];
             return next.sort(sortItems);
           });
-          // Once they add an item, clear the "just created" prompt.
           if (justCreatedCatId === inserted.category_id) setJustCreatedCatId(null);
           setItemDraft(null);
           setSuccessMsg(`Procedure "${inserted.name}" saved.`);
@@ -879,7 +903,6 @@ function CategoryDetail({
         </div>
       ) : (
         <>
-          {/* Desktop / tablet table */}
           <div
             className="hidden md:block overflow-x-auto rounded-xl border"
             style={{ borderColor: "var(--color-border)" }}
@@ -936,7 +959,6 @@ function CategoryDetail({
             </table>
           </div>
 
-          {/* Mobile cards */}
           <ul className="md:hidden space-y-3">
             {items.map((it) => (
               <li

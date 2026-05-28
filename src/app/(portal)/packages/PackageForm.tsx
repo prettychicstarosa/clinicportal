@@ -158,6 +158,8 @@ export default function PackageForm({
           rows.push({
             client_id: f.client_id,
             package_id: pkgId,
+            package_name: f.name.trim(),
+            generated_from_package: true,
             date: addDaysISO(f.start_date, i * intervalDays),
             time: f.first_time || "10:00",
             treatment: `${f.name.trim()} — Session ${i + 1}/${sessions}`,
@@ -169,7 +171,15 @@ export default function PackageForm({
         const { error: apptErr } = await supabase.from("appointments").insert(rows);
         if (apptErr) {
           setErr(`Package created, but auto-scheduling failed: ${apptErr.message}`);
+          return;
         }
+        await supabase.from("activity_logs").insert({
+          actor_id: user?.id,
+          action: "auto-generated appointments",
+          entity: "package",
+          entity_id: pkgId,
+          details: `${sessions} appointments for ${f.name.trim()}`
+        });
       }
 
       await supabase.from("activity_logs").insert({

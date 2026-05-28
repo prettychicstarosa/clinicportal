@@ -4,7 +4,7 @@ import { StatCard } from "@/components/StatCard";
 import { PageHeader } from "@/components/PageHeader";
 import { Logo } from "@/components/Logo";
 import {
-  Users, CalendarDays, Sparkles, Receipt, CreditCard, Package, TrendingUp, Clock
+  Users, CalendarDays, Sparkles, Receipt, CreditCard, Package, TrendingUp, Wallet, Clock
 } from "lucide-react";
 import { formatCurrency, formatDateTime, todayISO, startOfMonthISO } from "@/lib/utils";
 
@@ -15,11 +15,14 @@ export default async function DashboardPage() {
   const settings = await getSettings();
   const today = todayISO();
   const monthStart = startOfMonthISO();
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
 
   const [
     totalClients, todayAppts, activePackages,
     monthExpenses, receivable, lowStock,
-    monthRevenue, recent
+    monthRevenue, monthIncome, recent
   ] = await Promise.all([
     supabase.from("clients").select("*", { count: "exact", head: true }),
     supabase.from("appointments").select("*", { count: "exact", head: true }).eq("date", today),
@@ -28,12 +31,19 @@ export default async function DashboardPage() {
     supabase.from("clients").select("balance"),
     supabase.from("inventory").select("*", { count: "exact", head: true }).in("stock_status", ["Low Stock", "Out of Stock"]),
     supabase.from("payments").select("amount").gte("created_at", monthStart),
+    supabase.from("income").select("week1,week2,week3,week4,week5").eq("month", currentMonth).eq("year", currentYear).maybeSingle(),
     supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(10)
   ]);
 
   const expensesSum = (monthExpenses.data ?? []).reduce((a, b) => a + Number(b.amount || 0), 0);
   const receivableSum = (receivable.data ?? []).reduce((a, b) => a + Number(b.balance || 0), 0);
   const revenueSum = (monthRevenue.data ?? []).reduce((a, b) => a + Number(b.amount || 0), 0);
+  const inc = monthIncome.data as any | null;
+  const manualIncomeSum = inc
+    ? Number(inc.week1 || 0) + Number(inc.week2 || 0) + Number(inc.week3 || 0)
+      + Number(inc.week4 || 0) + Number(inc.week5 || 0)
+    : 0;
+  const netIncome = manualIncomeSum - expensesSum;
 
   return (
     <div className="space-y-6">
@@ -56,10 +66,11 @@ export default async function DashboardPage() {
         <StatCard label="Today's Appointments" value={todayAppts.count ?? 0}              icon={CalendarDays} />
         <StatCard label="Active Packages"      value={activePackages.count ?? 0}          icon={Sparkles} />
         <StatCard label="Low Stock Items"      value={lowStock.count ?? 0}                icon={Package} />
+        <StatCard label="Monthly Income"       value={formatCurrency(manualIncomeSum)}    icon={Wallet} />
         <StatCard label="Monthly Expenses"     value={formatCurrency(expensesSum)}        icon={Receipt} />
+        <StatCard label="Net Income"           value={formatCurrency(netIncome)}          icon={TrendingUp} />
         <StatCard label="Amount Receivable"    value={formatCurrency(receivableSum)}      icon={CreditCard} />
-        <StatCard label="Monthly Revenue"      value={formatCurrency(revenueSum)}         icon={TrendingUp} />
-        <StatCard label="Net (Revenue − Exp.)" value={formatCurrency(revenueSum - expensesSum)} icon={TrendingUp} />
+        <StatCard label="Monthly Payments"     value={formatCurrency(revenueSum)}         icon={TrendingUp} />
       </div>
 
       <div className="card">

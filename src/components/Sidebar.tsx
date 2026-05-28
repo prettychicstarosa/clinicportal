@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, CalendarDays, Sparkles, Receipt,
-  Package, CreditCard, BarChart3, Settings as SettingsIcon, LogOut
+  Package, CreditCard, BarChart3, Wallet, Settings as SettingsIcon, LogOut
 } from "lucide-react";
 import { Logo } from "./Logo";
 import clsx from "clsx";
@@ -16,6 +16,7 @@ const NAV = [
   { href: "/payments",     label: "Payments",     icon: CreditCard },
   { href: "/inventory",    label: "Inventory",    icon: Package },
   { href: "/expenses",     label: "Expenses",     icon: Receipt },
+  { href: "/income",       label: "Income",       icon: Wallet },
   { href: "/reports",      label: "Reports",      icon: BarChart3 },
   { href: "/settings",     label: "Settings",     icon: SettingsIcon }
 ];

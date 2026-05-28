@@ -33,22 +33,53 @@ const emptyItem = (category_id: string): ItemDraft => ({
   notes: ""
 });
 
+type PgErrLike = { code?: string; message?: string; details?: string; hint?: string };
+
+function describeError(e: PgErrLike | null | undefined): string {
+  if (!e) return "Unknown error.";
+  const code = e.code ?? "";
+  const msg = e.message ?? "";
+  if (code === "42P01" || /relation .* does not exist/i.test(msg)) {
+    return "The guidelines tables do not exist yet. Please run the 0006_guidelines.sql patch in Supabase, then refresh.";
+  }
+  if (code === "42501" || /permission denied|row[- ]level security|rls/i.test(msg)) {
+    return "Permission denied. Only owner or admin can add categories. Make sure you are signed in as an owner/admin and that RLS policies for guideline_categories are installed.";
+  }
+  if (code === "23505" || /duplicate key|unique constraint/i.test(msg)) {
+    return "A category with this name already exists.";
+  }
+  if (code === "23503" || /foreign key/i.test(msg)) {
+    return "Linked record missing. Please reload the page and try again.";
+  }
+  return msg || "Could not save. Please try again.";
+}
+
 export default function GuidelinesManager({
-  categories,
-  items
+  categories: initialCategories,
+  items: initialItems
 }: {
   categories: GuidelineCategory[];
   items: GuidelineItem[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [err, setErr] = useState<string | null>(null);
+
+  // Mirror props in local state so we can optimistically insert/update without
+  // waiting for a server round-trip.
+  const [categories, setCategories] = useState<GuidelineCategory[]>(initialCategories);
+  const [items, setItems] = useState<GuidelineItem[]>(initialItems);
+  useEffect(() => { setCategories(initialCategories); }, [initialCategories]);
+  useEffect(() => { setItems(initialItems); }, [initialItems]);
 
   const [selectedCatId, setSelectedCatId] = useState<string | null>(
-    categories[0]?.id ?? null
+    initialCategories[0]?.id ?? null
   );
+
   const [catDraft, setCatDraft] = useState<CatDraft | null>(null);
   const [itemDraft, setItemDraft] = useState<ItemDraft | null>(null);
+  const [catErr, setCatErr] = useState<string | null>(null);
+  const [itemErr, setItemErr] = useState<string | null>(null);
+  const [listErr, setListErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedCatId && categories.length > 0) {
@@ -68,20 +99,20 @@ export default function GuidelinesManager({
   );
 
   function startNewCategory() {
-    setErr(null);
+    setCatErr(null);
     setCatDraft({ ...EMPTY_CAT });
   }
   function startEditCategory(cat: GuidelineCategory) {
-    setErr(null);
+    setCatErr(null);
     setCatDraft({ id: cat.id, name: cat.name, description: cat.description ?? "" });
   }
   function startNewItem() {
     if (!selectedCatId) return;
-    setErr(null);
+    setItemErr(null);
     setItemDraft(emptyItem(selectedCatId));
   }
   function startEditItem(it: GuidelineItem) {
-    setErr(null);
+    setItemErr(null);
     setItemDraft({
       id: it.id,
       category_id: it.category_id,
@@ -98,94 +129,180 @@ export default function GuidelinesManager({
 
   function saveCategory() {
     if (!catDraft) return;
-    if (!catDraft.name.trim()) { setErr("Category name is required."); return; }
+    const name = catDraft.name.trim();
+    if (!name) { setCatErr("Category name is required."); return; }
+
     start(async () => {
-      setErr(null);
-      const supabase = createSupabaseBrowserClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      const payload = {
-        name: catDraft.name.trim(),
-        description: catDraft.description.trim() || null
-      };
-      if (catDraft.id) {
-        const { error } = await supabase
-          .from("guideline_categories")
-          .update(payload)
-          .eq("id", catDraft.id);
-        if (error) { setErr(error.message); return; }
-      } else {
-        const { data, error } = await supabase
-          .from("guideline_categories")
-          .insert({ ...payload, created_by: user?.id ?? null })
-          .select("id")
-          .single();
-        if (error) { setErr(error.message); return; }
-        if (data?.id) setSelectedCatId(data.id);
+      setCatErr(null);
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data: { user }, error: authErr } = await supabase.auth.getUser();
+        if (authErr || !user) {
+          setCatErr("You are not signed in. Please log in again.");
+          return;
+        }
+
+        const payload = {
+          name,
+          description: catDraft.description.trim() || null
+        };
+
+        if (catDraft.id) {
+          const { data, error } = await supabase
+            .from("guideline_categories")
+            .update(payload)
+            .eq("id", catDraft.id)
+            .select("*")
+            .single();
+          if (error) {
+            console.error("[guidelines] update category failed", error);
+            setCatErr(describeError(error));
+            return;
+          }
+          const updated = data as GuidelineCategory;
+          setCategories(prev => prev.map(c => (c.id === updated.id ? updated : c)));
+        } else {
+          const { data, error } = await supabase
+            .from("guideline_categories")
+            .insert({ ...payload, created_by: user.id })
+            .select("*")
+            .single();
+          if (error) {
+            console.error("[guidelines] insert category failed", error);
+            setCatErr(describeError(error));
+            return;
+          }
+          const inserted = data as GuidelineCategory;
+          setCategories(prev => [...prev, inserted].sort(sortCats));
+          setSelectedCatId(inserted.id);
+        }
+
+        setCatDraft(null);
+        router.refresh();
+      } catch (e: unknown) {
+        console.error("[guidelines] saveCategory threw", e);
+        const msg = e instanceof Error ? e.message : "Unexpected error while saving category.";
+        setCatErr(msg);
       }
-      setCatDraft(null);
-      router.refresh();
     });
   }
 
   function deleteCategory(cat: GuidelineCategory) {
     if (!confirm(`Delete category "${cat.name}" and all its items?`)) return;
     start(async () => {
-      const supabase = createSupabaseBrowserClient();
-      const { error } = await supabase
-        .from("guideline_categories")
-        .delete()
-        .eq("id", cat.id);
-      if (error) { setErr(error.message); return; }
-      if (selectedCatId === cat.id) setSelectedCatId(null);
-      router.refresh();
+      setListErr(null);
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { error } = await supabase
+          .from("guideline_categories")
+          .delete()
+          .eq("id", cat.id);
+        if (error) {
+          console.error("[guidelines] delete category failed", error);
+          setListErr(describeError(error));
+          return;
+        }
+        setCategories(prev => prev.filter(c => c.id !== cat.id));
+        setItems(prev => prev.filter(i => i.category_id !== cat.id));
+        if (selectedCatId === cat.id) setSelectedCatId(null);
+        router.refresh();
+      } catch (e: unknown) {
+        console.error("[guidelines] deleteCategory threw", e);
+        const msg = e instanceof Error ? e.message : "Unexpected error while deleting category.";
+        setListErr(msg);
+      }
     });
   }
 
   function saveItem() {
     if (!itemDraft) return;
-    if (!itemDraft.name.trim()) { setErr("Service / procedure name is required."); return; }
+    const name = itemDraft.name.trim();
+    if (!name) { setItemErr("Service / procedure name is required."); return; }
+    if (!itemDraft.category_id) { setItemErr("Please select a category first."); return; }
+
     start(async () => {
-      setErr(null);
-      const supabase = createSupabaseBrowserClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      const payload = {
-        category_id: itemDraft.category_id,
-        name: itemDraft.name.trim(),
-        medicine_used: itemDraft.medicine_used.trim() || null,
-        syringe_quantity: itemDraft.syringe_quantity.trim() || null,
-        time: itemDraft.time.trim() || null,
-        intensity: itemDraft.intensity.trim() || null,
-        internal_cost: Number(itemDraft.internal_cost) || 0,
-        procedure: itemDraft.procedure.trim() || null,
-        notes: itemDraft.notes.trim() || null
-      };
-      if (itemDraft.id) {
-        const { error } = await supabase
-          .from("guideline_items")
-          .update(payload)
-          .eq("id", itemDraft.id);
-        if (error) { setErr(error.message); return; }
-      } else {
-        const { error } = await supabase
-          .from("guideline_items")
-          .insert({ ...payload, created_by: user?.id ?? null });
-        if (error) { setErr(error.message); return; }
+      setItemErr(null);
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data: { user }, error: authErr } = await supabase.auth.getUser();
+        if (authErr || !user) {
+          setItemErr("You are not signed in. Please log in again.");
+          return;
+        }
+
+        const payload = {
+          category_id: itemDraft.category_id,
+          name,
+          medicine_used: itemDraft.medicine_used.trim() || null,
+          syringe_quantity: itemDraft.syringe_quantity.trim() || null,
+          time: itemDraft.time.trim() || null,
+          intensity: itemDraft.intensity.trim() || null,
+          internal_cost: Number(itemDraft.internal_cost) || 0,
+          procedure: itemDraft.procedure.trim() || null,
+          notes: itemDraft.notes.trim() || null
+        };
+
+        if (itemDraft.id) {
+          const { data, error } = await supabase
+            .from("guideline_items")
+            .update(payload)
+            .eq("id", itemDraft.id)
+            .select("*")
+            .single();
+          if (error) {
+            console.error("[guidelines] update item failed", error);
+            setItemErr(describeError(error));
+            return;
+          }
+          const updated = data as GuidelineItem;
+          setItems(prev => prev.map(i => (i.id === updated.id ? updated : i)));
+        } else {
+          const { data, error } = await supabase
+            .from("guideline_items")
+            .insert({ ...payload, created_by: user.id })
+            .select("*")
+            .single();
+          if (error) {
+            console.error("[guidelines] insert item failed", error);
+            setItemErr(describeError(error));
+            return;
+          }
+          const inserted = data as GuidelineItem;
+          setItems(prev => [...prev, inserted].sort(sortItems));
+        }
+
+        setItemDraft(null);
+        router.refresh();
+      } catch (e: unknown) {
+        console.error("[guidelines] saveItem threw", e);
+        const msg = e instanceof Error ? e.message : "Unexpected error while saving item.";
+        setItemErr(msg);
       }
-      setItemDraft(null);
-      router.refresh();
     });
   }
 
   function deleteItem(it: GuidelineItem) {
     if (!confirm(`Delete "${it.name}"?`)) return;
     start(async () => {
-      const supabase = createSupabaseBrowserClient();
-      const { error } = await supabase
-        .from("guideline_items")
-        .delete()
-        .eq("id", it.id);
-      if (error) { setErr(error.message); return; }
-      router.refresh();
+      setListErr(null);
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { error } = await supabase
+          .from("guideline_items")
+          .delete()
+          .eq("id", it.id);
+        if (error) {
+          console.error("[guidelines] delete item failed", error);
+          setListErr(describeError(error));
+          return;
+        }
+        setItems(prev => prev.filter(i => i.id !== it.id));
+        router.refresh();
+      } catch (e: unknown) {
+        console.error("[guidelines] deleteItem threw", e);
+        const msg = e instanceof Error ? e.message : "Unexpected error while deleting item.";
+        setListErr(msg);
+      }
     });
   }
 
@@ -195,19 +312,17 @@ export default function GuidelinesManager({
         <p className="text-sm" style={{ color: "var(--color-muted)" }}>
           Organize service guidelines by category. Staff with access can view; only owner / admin can edit.
         </p>
-        <button className="btn-primary" onClick={startNewCategory} disabled={pending}>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={startNewCategory}
+          disabled={pending}
+        >
           <Plus size={16} /> New Category
         </button>
       </div>
 
-      {err && (
-        <div
-          className="rounded-xl border px-3 py-2 text-sm text-red-800"
-          style={{ background: "#FDECEC", borderColor: "#F5C2C2" }}
-        >
-          {err}
-        </div>
-      )}
+      {listErr && <ErrorBanner message={listErr} onDismiss={() => setListErr(null)} />}
 
       {categories.length === 0 ? (
         <div className="card text-center py-10">
@@ -218,7 +333,7 @@ export default function GuidelinesManager({
           <p className="text-sm mt-1" style={{ color: "var(--color-muted)" }}>
             Start by adding a category — e.g. Facial, Injectables, Laser, Slimming.
           </p>
-          <button className="btn-primary mt-4" onClick={startNewCategory}>
+          <button type="button" className="btn-primary mt-4" onClick={startNewCategory}>
             <Plus size={16} /> Add your first category
           </button>
         </div>
@@ -248,10 +363,15 @@ export default function GuidelinesManager({
               </select>
               {selectedCat && (
                 <div className="flex gap-2 mt-2">
-                  <button className="btn-ghost !text-xs flex-1" onClick={() => startEditCategory(selectedCat)}>
+                  <button
+                    type="button"
+                    className="btn-ghost !text-xs flex-1"
+                    onClick={() => startEditCategory(selectedCat)}
+                  >
                     <Pencil size={14} /> Edit
                   </button>
                   <button
+                    type="button"
                     className="btn-ghost !text-xs flex-1 text-red-700"
                     onClick={() => deleteCategory(selectedCat)}
                   >
@@ -284,9 +404,13 @@ export default function GuidelinesManager({
       {catDraft && (
         <Modal
           title={catDraft.id ? "Edit Category" : "New Category"}
-          onClose={() => setCatDraft(null)}
+          onClose={() => { setCatDraft(null); setCatErr(null); }}
         >
-          <div className="space-y-3">
+          <form
+            onSubmit={(e) => { e.preventDefault(); saveCategory(); }}
+            className="space-y-3"
+          >
+            {catErr && <ErrorBanner message={catErr} />}
             <div>
               <label className="label">Name *</label>
               <input
@@ -295,6 +419,7 @@ export default function GuidelinesManager({
                 placeholder="e.g. Injectables"
                 onChange={(e) => setCatDraft({ ...catDraft, name: e.target.value })}
                 autoFocus
+                required
               />
             </div>
             <div>
@@ -306,15 +431,20 @@ export default function GuidelinesManager({
                 onChange={(e) => setCatDraft({ ...catDraft, description: e.target.value })}
               />
             </div>
-          </div>
-          <div className="flex justify-end gap-2 mt-5">
-            <button type="button" className="btn-ghost" disabled={pending} onClick={() => setCatDraft(null)}>
-              Cancel
-            </button>
-            <button type="button" className="btn-primary" disabled={pending} onClick={saveCategory}>
-              {pending ? "Saving..." : "Save Category"}
-            </button>
-          </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={pending}
+                onClick={() => { setCatDraft(null); setCatErr(null); }}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary" disabled={pending}>
+                {pending ? "Saving..." : "Save Category"}
+              </button>
+            </div>
+          </form>
         </Modal>
       )}
 
@@ -323,96 +453,144 @@ export default function GuidelinesManager({
           title={itemDraft.id ? "Edit Item" : "New Item"}
           subtitle={selectedCat?.name}
           wide
-          onClose={() => setItemDraft(null)}
+          onClose={() => { setItemDraft(null); setItemErr(null); }}
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="md:col-span-2">
-              <label className="label">Service / Procedure Name *</label>
-              <input
-                className="input"
-                value={itemDraft.name}
-                placeholder="e.g. Botox forehead"
-                onChange={(e) => setItemDraft({ ...itemDraft, name: e.target.value })}
-                autoFocus
-              />
+          <form
+            onSubmit={(e) => { e.preventDefault(); saveItem(); }}
+            className="space-y-3"
+          >
+            {itemErr && <ErrorBanner message={itemErr} />}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="md:col-span-2">
+                <label className="label">Service / Procedure Name *</label>
+                <input
+                  className="input"
+                  value={itemDraft.name}
+                  placeholder="e.g. Botox forehead"
+                  onChange={(e) => setItemDraft({ ...itemDraft, name: e.target.value })}
+                  autoFocus
+                  required
+                />
+              </div>
+              <div>
+                <label className="label">Medicine / Product Used</label>
+                <input
+                  className="input"
+                  value={itemDraft.medicine_used}
+                  placeholder="e.g. Botulinum toxin"
+                  onChange={(e) => setItemDraft({ ...itemDraft, medicine_used: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Syringe / Quantity</label>
+                <input
+                  className="input"
+                  value={itemDraft.syringe_quantity}
+                  placeholder="e.g. 1 syringe / 1ml"
+                  onChange={(e) => setItemDraft({ ...itemDraft, syringe_quantity: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Time</label>
+                <input
+                  className="input"
+                  value={itemDraft.time}
+                  placeholder="e.g. 30 minutes"
+                  onChange={(e) => setItemDraft({ ...itemDraft, time: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Intensity / Settings</label>
+                <input
+                  className="input"
+                  value={itemDraft.intensity}
+                  placeholder="e.g. Level 3 / 1.5 J"
+                  onChange={(e) => setItemDraft({ ...itemDraft, intensity: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Internal Cost</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="input"
+                  value={itemDraft.internal_cost}
+                  onChange={(e) => setItemDraft({ ...itemDraft, internal_cost: e.target.value })}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="label">Procedure / Steps</label>
+                <textarea
+                  className="input"
+                  rows={4}
+                  value={itemDraft.procedure}
+                  placeholder="Step-by-step procedure"
+                  onChange={(e) => setItemDraft({ ...itemDraft, procedure: e.target.value })}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="label">Notes</label>
+                <textarea
+                  className="input"
+                  rows={3}
+                  value={itemDraft.notes}
+                  placeholder="Internal notes, contraindications, reminders"
+                  onChange={(e) => setItemDraft({ ...itemDraft, notes: e.target.value })}
+                />
+              </div>
             </div>
-            <div>
-              <label className="label">Medicine / Product Used</label>
-              <input
-                className="input"
-                value={itemDraft.medicine_used}
-                placeholder="e.g. Botulinum toxin"
-                onChange={(e) => setItemDraft({ ...itemDraft, medicine_used: e.target.value })}
-              />
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={pending}
+                onClick={() => { setItemDraft(null); setItemErr(null); }}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary" disabled={pending}>
+                {pending ? "Saving..." : "Save Item"}
+              </button>
             </div>
-            <div>
-              <label className="label">Syringe / Quantity</label>
-              <input
-                className="input"
-                value={itemDraft.syringe_quantity}
-                placeholder="e.g. 1 syringe / 1ml"
-                onChange={(e) => setItemDraft({ ...itemDraft, syringe_quantity: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="label">Time</label>
-              <input
-                className="input"
-                value={itemDraft.time}
-                placeholder="e.g. 30 minutes"
-                onChange={(e) => setItemDraft({ ...itemDraft, time: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="label">Intensity / Settings</label>
-              <input
-                className="input"
-                value={itemDraft.intensity}
-                placeholder="e.g. Level 3 / 1.5 J"
-                onChange={(e) => setItemDraft({ ...itemDraft, intensity: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="label">Internal Cost</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                className="input"
-                value={itemDraft.internal_cost}
-                onChange={(e) => setItemDraft({ ...itemDraft, internal_cost: e.target.value })}
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="label">Procedure / Steps</label>
-              <textarea
-                className="input"
-                rows={4}
-                value={itemDraft.procedure}
-                placeholder="Step-by-step procedure"
-                onChange={(e) => setItemDraft({ ...itemDraft, procedure: e.target.value })}
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="label">Notes</label>
-              <textarea
-                className="input"
-                rows={3}
-                value={itemDraft.notes}
-                placeholder="Internal notes, contraindications, reminders"
-                onChange={(e) => setItemDraft({ ...itemDraft, notes: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 mt-5">
-            <button type="button" className="btn-ghost" disabled={pending} onClick={() => setItemDraft(null)}>
-              Cancel
-            </button>
-            <button type="button" className="btn-primary" disabled={pending} onClick={saveItem}>
-              {pending ? "Saving..." : "Save Item"}
-            </button>
-          </div>
+          </form>
         </Modal>
+      )}
+    </div>
+  );
+}
+
+function sortCats(a: GuidelineCategory, b: GuidelineCategory) {
+  if ((a.sort_order ?? 0) !== (b.sort_order ?? 0)) {
+    return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  }
+  return a.name.localeCompare(b.name);
+}
+
+function sortItems(a: GuidelineItem, b: GuidelineItem) {
+  if ((a.sort_order ?? 0) !== (b.sort_order ?? 0)) {
+    return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  }
+  return a.name.localeCompare(b.name);
+}
+
+function ErrorBanner({ message, onDismiss }: { message: string; onDismiss?: () => void }) {
+  return (
+    <div
+      className="flex items-start justify-between gap-3 rounded-xl border px-3 py-2 text-sm text-red-800"
+      style={{ background: "#FDECEC", borderColor: "#F5C2C2" }}
+      role="alert"
+    >
+      <span className="whitespace-pre-line">{message}</span>
+      {onDismiss && (
+        <button
+          type="button"
+          aria-label="Dismiss"
+          className="text-red-800/70 hover:text-red-800"
+          onClick={onDismiss}
+        >
+          <X size={14} />
+        </button>
       )}
     </div>
   );
@@ -473,6 +651,7 @@ function CategoryList({
               {canManage && active && (
                 <div className="flex gap-2 mt-3">
                   <button
+                    type="button"
                     className="text-xs underline"
                     style={{ color: "var(--color-primary-soft)" }}
                     onClick={(e) => { e.stopPropagation(); onEdit?.(c); }}
@@ -480,6 +659,7 @@ function CategoryList({
                     Edit
                   </button>
                   <button
+                    type="button"
                     className="text-xs underline text-red-700"
                     onClick={(e) => { e.stopPropagation(); onDelete?.(c); }}
                   >
@@ -524,7 +704,7 @@ function CategoryDetail({
           )}
         </div>
         {canManage && (
-          <button className="btn-primary self-start md:self-auto" onClick={onAddItem}>
+          <button type="button" className="btn-primary self-start md:self-auto" onClick={onAddItem}>
             <Plus size={16} /> Add Item
           </button>
         )}
@@ -539,7 +719,7 @@ function CategoryDetail({
             No procedures in this category yet.
           </p>
           {canManage && (
-            <button className="btn-ghost mt-3 !text-xs" onClick={onAddItem}>
+            <button type="button" className="btn-ghost mt-3 !text-xs" onClick={onAddItem}>
               <Plus size={14} /> Add the first item
             </button>
           )}
@@ -547,7 +727,10 @@ function CategoryDetail({
       ) : (
         <>
           {/* Desktop / tablet table */}
-          <div className="hidden md:block overflow-x-auto rounded-xl border" style={{ borderColor: "var(--color-border)" }}>
+          <div
+            className="hidden md:block overflow-x-auto rounded-xl border"
+            style={{ borderColor: "var(--color-border)" }}
+          >
             <table className="w-full min-w-[1100px]">
               <thead className="bg-beige-100">
                 <tr>
@@ -577,6 +760,7 @@ function CategoryDetail({
                       <td className="table-td text-right">
                         <div className="flex gap-2 justify-end">
                           <button
+                            type="button"
                             className="text-xs underline"
                             style={{ color: "var(--color-primary-soft)" }}
                             onClick={() => onEditItem?.(it)}
@@ -584,6 +768,7 @@ function CategoryDetail({
                             Edit
                           </button>
                           <button
+                            type="button"
                             className="text-xs underline text-red-700"
                             onClick={() => onDeleteItem?.(it)}
                           >
@@ -639,6 +824,7 @@ function CategoryDetail({
                 {canManage && (
                   <div className="flex gap-3 mt-3">
                     <button
+                      type="button"
                       className="text-xs underline"
                       style={{ color: "var(--color-primary-soft)" }}
                       onClick={() => onEditItem?.(it)}
@@ -646,6 +832,7 @@ function CategoryDetail({
                       Edit
                     </button>
                     <button
+                      type="button"
                       className="text-xs underline text-red-700"
                       onClick={() => onDeleteItem?.(it)}
                     >
@@ -714,6 +901,7 @@ function Modal({
             )}
           </div>
           <button
+            type="button"
             className="rounded-full p-1 hover:bg-black/5 transition"
             aria-label="Close"
             onClick={onClose}

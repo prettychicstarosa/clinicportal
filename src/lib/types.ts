@@ -167,3 +167,55 @@ export type ActivityLog = {
   details: string | null;
   created_at: string;
 };
+
+export type PermissionKey =
+  | "dashboard"
+  | "clients"
+  | "appointments"
+  | "packages"
+  | "payments"
+  | "expenses"
+  | "inventory"
+  | "income"
+  | "reports"
+  | "settings"
+  | "guidelines";
+
+export type StaffPermissions = {
+  profile_id: string;
+  dashboard: boolean;
+  clients: boolean;
+  appointments: boolean;
+  packages: boolean;
+  payments: boolean;
+  expenses: boolean;
+  inventory: boolean;
+  income: boolean;
+  reports: boolean;
+  settings: boolean;
+  guidelines: boolean;
+  updated_at?: string;
+};
+
+export type GuidelineCategory = {
+  id: string;
+  name: string;
+  description: string | null;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GuidelineItem = {
+  id: string;
+  category_id: string;
+  name: string;
+  time: string | null;
+  procedure: string | null;
+  internal_cost: number;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};

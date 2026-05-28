@@ -3,22 +3,25 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, CalendarDays, Sparkles, Receipt,
-  Package, CreditCard, BarChart3, Wallet, Settings as SettingsIcon, LogOut
+  Package, CreditCard, BarChart3, Wallet, BookOpen,
+  Settings as SettingsIcon, LogOut
 } from "lucide-react";
 import { Logo } from "./Logo";
 import clsx from "clsx";
+import type { PermissionKey } from "@/lib/types";
 
-const NAV = [
-  { href: "/dashboard",    label: "Dashboard",    icon: LayoutDashboard },
-  { href: "/clients",      label: "Clients",      icon: Users },
-  { href: "/appointments", label: "Appointments", icon: CalendarDays },
-  { href: "/packages",     label: "Packages",     icon: Sparkles },
-  { href: "/payments",     label: "Payments",     icon: CreditCard },
-  { href: "/inventory",    label: "Inventory",    icon: Package },
-  { href: "/expenses",     label: "Expenses",     icon: Receipt },
-  { href: "/income",       label: "Income",       icon: Wallet },
-  { href: "/reports",      label: "Reports",      icon: BarChart3 },
-  { href: "/settings",     label: "Settings",     icon: SettingsIcon }
+const NAV: { href: string; label: string; icon: any; key: PermissionKey }[] = [
+  { href: "/dashboard",    label: "Dashboard",    icon: LayoutDashboard, key: "dashboard" },
+  { href: "/clients",      label: "Clients",      icon: Users,           key: "clients" },
+  { href: "/appointments", label: "Appointments", icon: CalendarDays,    key: "appointments" },
+  { href: "/packages",     label: "Packages",     icon: Sparkles,        key: "packages" },
+  { href: "/payments",     label: "Payments",     icon: CreditCard,      key: "payments" },
+  { href: "/inventory",    label: "Inventory",    icon: Package,         key: "inventory" },
+  { href: "/guidelines",   label: "Guidelines",   icon: BookOpen,        key: "guidelines" },
+  { href: "/expenses",     label: "Expenses",     icon: Receipt,         key: "expenses" },
+  { href: "/income",       label: "Income",       icon: Wallet,          key: "income" },
+  { href: "/reports",      label: "Reports",      icon: BarChart3,       key: "reports" },
+  { href: "/settings",     label: "Settings",     icon: SettingsIcon,    key: "settings" }
 ];
 
 type Props = {
@@ -26,15 +29,17 @@ type Props = {
   logoUrl: string | null;
   userName: string;
   role: string;
+  allowed: Record<PermissionKey, boolean>;
 };
 
-export function Sidebar({ clinicName, logoUrl, userName, role }: Props) {
+export function Sidebar({ clinicName, logoUrl, userName, role, allowed }: Props) {
   const pathname = usePathname();
   async function signOut() {
     await fetch("/api/auth/signout", { method: "POST" });
     window.location.href = "/login";
   }
   const roleLabel = role === "owner" ? "Owner" : role === "admin" ? "Admin" : "Staff";
+  const items = NAV.filter(n => allowed[n.key]);
   return (
     <aside
       className="hidden md:flex md:flex-col w-64 min-h-screen px-4 py-6 gap-2"
@@ -48,7 +53,7 @@ export function Sidebar({ clinicName, logoUrl, userName, role }: Props) {
         </div>
       </div>
       <nav className="flex-1 space-y-1">
-        {NAV.map(({ href, label, icon: Icon }) => {
+        {items.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link

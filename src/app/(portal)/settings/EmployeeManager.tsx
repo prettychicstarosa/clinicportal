@@ -1,7 +1,9 @@
 "use client";
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/utils";
+import { PERMISSION_TABS, DEFAULT_PERMISSIONS } from "@/lib/permissions-shared";
+import type { PermissionKey } from "@/lib/types";
 
 type Role = "owner" | "admin" | "staff";
 type Employee = {
@@ -34,6 +36,9 @@ export default function EmployeeManager({
   const [ok, setOk] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [permId, setPermId] = useState<string | null>(null);
+  const [perms, setPerms] = useState<Record<PermissionKey, boolean> | null>(null);
+  const [permLoading, setPermLoading] = useState(false);
   const [f, setF] = useState({
     full_name: "",
     username: "",
@@ -119,6 +124,53 @@ export default function EmployeeManager({
     });
   }
 
+  async function openPermissions(emp: Employee) {
+    setErr(null); setOk(null);
+    if (permId === emp.id) {
+      setPermId(null); setPerms(null);
+      return;
+    }
+    setPermId(emp.id);
+    setPerms(null);
+    setPermLoading(true);
+    try {
+      const res = await fetch(`/api/staff-permissions?profile_id=${emp.id}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setErr(data.error ?? "Could not load permissions");
+        setPermLoading(false);
+        return;
+      }
+      const p = data.permissions ?? { ...DEFAULT_PERMISSIONS };
+      const next: Record<PermissionKey, boolean> = {} as any;
+      for (const t of PERMISSION_TABS) next[t.key] = Boolean(p[t.key]);
+      setPerms(next);
+    } finally {
+      setPermLoading(false);
+    }
+  }
+
+  function togglePerm(key: PermissionKey) {
+    setPerms(prev => prev ? { ...prev, [key]: !prev[key] } : prev);
+  }
+
+  function savePerms(emp: Employee) {
+    if (!perms) return;
+    start(async () => {
+      setErr(null); setOk(null);
+      const res = await fetch("/api/staff-permissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile_id: emp.id, permissions: perms })
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error ?? "Could not save permissions"); return; }
+      setOk(`Access updated for ${displayUsername(emp.email)}`);
+      setPermId(null); setPerms(null);
+      router.refresh();
+    });
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -192,8 +244,10 @@ export default function EmployeeManager({
                 const isOwnerRow = emp.role === "owner";
                 const isSelf = emp.id === currentUserId;
                 const isEditing = editingId === emp.id;
+                const permsOpen = permId === emp.id;
                 return (
-                  <tr key={emp.id}>
+                  <Fragment key={emp.id}>
+                  <tr>
                     <td className="table-td font-medium">
                       {isEditing ? (
                         <div className="flex items-center gap-2">
@@ -239,6 +293,11 @@ export default function EmployeeManager({
                             Edit
                           </button>
                         )}
+                        {!isOwnerRow && (
+                          <button onClick={() => openPermissions(emp)} disabled={pending} className="text-xs underline">
+                            {permsOpen ? "Close access" : "Access"}
+                          </button>
+                        )}
                         {!isSelf && (
                           <button onClick={() => resetPassword(emp)} disabled={pending} className="text-xs underline">
                             Reset password
@@ -257,6 +316,66 @@ export default function EmployeeManager({
                       </div>
                     </td>
                   </tr>
+                  {permsOpen && (
+                    <tr>
+                      <td colSpan={6} className="bg-beige-50 px-4 py-4">
+                        <div className="rounded-2xl border bg-white/70 p-4" style={{ borderColor: "var(--color-border)" }}>
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <div className="font-medium" style={{ color: "var(--color-primary)" }}>
+                                Tab access for {emp.full_name || displayUsername(emp.email)}
+                              </div>
+                              <div className="text-xs" style={{ color: "var(--color-muted)" }}>
+                                Owners and admins see all tabs regardless of these toggles.
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                className="btn-ghost !text-xs"
+                                disabled={pending || !perms}
+                                onClick={() => {
+                                  setPermId(null); setPerms(null);
+                                }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-primary !text-xs"
+                                disabled={pending || !perms}
+                                onClick={() => savePerms(emp)}
+                              >
+                                {pending ? "Saving..." : "Save access"}
+                              </button>
+                            </div>
+                          </div>
+                          {permLoading || !perms ? (
+                            <p className="text-sm" style={{ color: "var(--color-muted)" }}>Loading...</p>
+                          ) : (
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                              {PERMISSION_TABS.map(t => (
+                                <label
+                                  key={t.key}
+                                  className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl border bg-white"
+                                  style={{ borderColor: "var(--color-border)" }}
+                                >
+                                  <span className="text-sm">{t.label}</span>
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4"
+                                    checked={Boolean(perms[t.key])}
+                                    onChange={() => togglePerm(t.key)}
+                                  />
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
               {employees.length === 0 && (

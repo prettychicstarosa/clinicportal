@@ -14,10 +14,17 @@ export function Logo({ src, name = "Pretty Chic", size = 64, variant = "default"
   if (src) {
     return (
       <div
-        className="rounded-2xl overflow-hidden flex items-center justify-center"
-        style={{ width: size, height: size, background: bg }}
+        className="rounded-2xl overflow-hidden flex items-center justify-center bg-white"
+        style={{ width: size, height: size }}
       >
-        <Image src={src} alt={name} width={size} height={size} style={{ objectFit: "cover" }} unoptimized />
+        <Image
+          src={src}
+          alt={name}
+          width={size}
+          height={size}
+          style={{ width: size, height: size, objectFit: "cover" }}
+          unoptimized
+        />
       </div>
     );
   }

@@ -113,6 +113,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    if (action === "update_profile") {
+      const { user_id, full_name } = body;
+      if (typeof full_name !== "string" || !full_name.trim()) {
+        return NextResponse.json({ error: "Full name required" }, { status: 400 });
+      }
+      const { error } = await admin.from("profiles")
+        .update({ full_name: full_name.trim() })
+        .eq("id", user_id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      await admin.auth.admin.updateUserById(user_id, {
+        user_metadata: { full_name: full_name.trim() }
+      });
+      await logAdminAction("updated staff profile", `name=${full_name.trim()}`, user_id);
+      return NextResponse.json({ ok: true });
+    }
+
     if (action === "delete") {
       const { user_id } = body;
       const { data: target } = await admin.from("profiles").select("role").eq("id", user_id).single();

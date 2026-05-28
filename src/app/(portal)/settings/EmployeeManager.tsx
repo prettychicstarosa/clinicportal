@@ -1,6 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { formatDate } from "@/lib/utils";
 
 type Role = "owner" | "admin" | "staff";
 type Employee = {
@@ -9,6 +10,7 @@ type Employee = {
   email: string;
   role: Role;
   is_active: boolean;
+  created_at: string;
 };
 
 function displayUsername(email: string) {
@@ -30,6 +32,8 @@ export default function EmployeeManager({
   const [showNew, setShowNew] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
   const [f, setF] = useState({
     full_name: "",
     username: "",
@@ -76,6 +80,26 @@ export default function EmployeeManager({
     start(async () => {
       const success = await call("change_role", { user_id: emp.id, role });
       if (success) router.refresh();
+    });
+  }
+  function startEditName(emp: Employee) {
+    setEditingId(emp.id);
+    setEditName(emp.full_name ?? "");
+  }
+  function cancelEditName() {
+    setEditingId(null);
+    setEditName("");
+  }
+  function saveName(emp: Employee) {
+    const next = editName.trim();
+    if (!next) return;
+    start(async () => {
+      const success = await call("update_profile", { user_id: emp.id, full_name: next });
+      if (success) {
+        setOk(`Profile updated for ${displayUsername(emp.email)}`);
+        cancelEditName();
+        router.refresh();
+      }
     });
   }
   function resetPassword(emp: Employee) {
@@ -155,20 +179,39 @@ export default function EmployeeManager({
           <table className="w-full">
             <thead className="bg-beige-100">
               <tr>
-                <th className="table-th">Name</th><th className="table-th">Username</th>
-                <th className="table-th">Role</th><th className="table-th">Status</th>
-                <th className="table-th text-right"></th>
+                <th className="table-th">Full Name</th>
+                <th className="table-th">Username</th>
+                <th className="table-th">Role</th>
+                <th className="table-th">Status</th>
+                <th className="table-th">Created</th>
+                <th className="table-th text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {employees.map(emp => {
                 const isOwnerRow = emp.role === "owner";
                 const isSelf = emp.id === currentUserId;
+                const isEditing = editingId === emp.id;
                 return (
                   <tr key={emp.id}>
                     <td className="table-td font-medium">
-                      {emp.full_name || "—"}
-                      {isOwnerRow && <span className="ml-2 badge badge-blue">Owner</span>}
+                      {isEditing ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            autoFocus
+                            className="input !py-1 !text-sm"
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                          />
+                          <button onClick={() => saveName(emp)} disabled={pending} className="text-xs underline">Save</button>
+                          <button onClick={cancelEditName} disabled={pending} className="text-xs">Cancel</button>
+                        </div>
+                      ) : (
+                        <>
+                          {emp.full_name || "—"}
+                          {isOwnerRow && <span className="ml-2 badge badge-blue">Owner</span>}
+                        </>
+                      )}
                     </td>
                     <td className="table-td">{displayUsername(emp.email)}</td>
                     <td className="table-td">
@@ -188,16 +231,22 @@ export default function EmployeeManager({
                         {emp.is_active ? "Active" : "Disabled"}
                       </span>
                     </td>
+                    <td className="table-td">{formatDate(emp.created_at)}</td>
                     <td className="table-td">
-                      <div className="flex gap-3 justify-end">
-                        {!isSelf && !isOwnerRow && (
-                          <button onClick={() => toggleActive(emp)} disabled={pending} className="text-xs underline">
-                            {emp.is_active ? "Disable" : "Enable"}
+                      <div className="flex gap-3 justify-end flex-wrap">
+                        {!isEditing && (
+                          <button onClick={() => startEditName(emp)} disabled={pending} className="text-xs underline">
+                            Edit
                           </button>
                         )}
                         {!isSelf && (
                           <button onClick={() => resetPassword(emp)} disabled={pending} className="text-xs underline">
                             Reset password
+                          </button>
+                        )}
+                        {!isSelf && !isOwnerRow && (
+                          <button onClick={() => toggleActive(emp)} disabled={pending} className="text-xs underline">
+                            {emp.is_active ? "Disable" : "Enable"}
                           </button>
                         )}
                         {!isSelf && !isOwnerRow && (
@@ -211,7 +260,7 @@ export default function EmployeeManager({
                 );
               })}
               {employees.length === 0 && (
-                <tr><td colSpan={5} className="table-td text-center" style={{ color: "var(--color-muted)" }}>No staff accounts yet.</td></tr>
+                <tr><td colSpan={6} className="table-td text-center" style={{ color: "var(--color-muted)" }}>No staff accounts yet.</td></tr>
               )}
             </tbody>
           </table>

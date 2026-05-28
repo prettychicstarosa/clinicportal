@@ -15,9 +15,9 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
   const { data: appts } = await supabase
     .from("appointments")
     .select("*, clients(full_name), packages(name)")
-    .order("date", { ascending: false })
+    .order("date", { ascending: true })
     .order("time", { ascending: true })
-    .limit(200);
+    .limit(500);
 
   const groups = new Map<string, any[]>();
   for (const a of appts ?? []) {
@@ -68,9 +68,12 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
             <table className="w-full">
               <thead className="bg-beige-100">
                 <tr>
-                  <th className="table-th">Date</th><th className="table-th">Time</th>
-                  <th className="table-th">Client</th><th className="table-th">Treatment / Package</th>
-                  <th className="table-th">Status</th><th className="table-th">Notes</th>
+                  <th className="table-th">Client</th>
+                  <th className="table-th">Package</th>
+                  <th className="table-th">Date</th>
+                  <th className="table-th">Time</th>
+                  <th className="table-th">Status</th>
+                  <th className="table-th">Notes</th>
                   <th className="table-th"></th>
                 </tr>
               </thead>

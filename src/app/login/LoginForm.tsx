@@ -6,7 +6,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 export default function LoginForm() {
   const router = useRouter();
   const sp = useSearchParams();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -15,11 +15,13 @@ export default function LoginForm() {
     e.preventDefault();
     setLoading(true); setErr(null);
     try {
+      const raw = identifier.trim();
+      const email = raw.includes("@") ? raw : `${raw.toLowerCase()}@prettychic.local`;
       const supabase = createSupabaseBrowserClient();
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         const msg = /invalid login credentials/i.test(error.message)
-          ? "Incorrect email or password."
+          ? "Incorrect username/email or password."
           : error.message;
         setErr(msg);
         setLoading(false);
@@ -44,11 +46,12 @@ export default function LoginForm() {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
-        <label className="label">Email</label>
+        <label className="label">Username or Email</label>
         <input
-          type="email" required value={email}
-          onChange={e => setEmail(e.target.value)}
-          className="input" placeholder="you@clinic.com"
+          type="text" required value={identifier}
+          onChange={e => setIdentifier(e.target.value)}
+          className="input" placeholder="staff1 or you@clinic.com"
+          autoCapitalize="off" autoCorrect="off" spellCheck={false}
         />
       </div>
       <div>

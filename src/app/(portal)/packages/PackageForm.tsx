@@ -13,6 +13,8 @@ const INTERVAL_PRESETS: { label: string; days: number | "custom" }[] = [
   { label: "Custom", days: "custom" }
 ];
 
+const STATUSES = ["Active", "Completed", "Cancelled", "Expired"] as const;
+
 function addDaysISO(iso: string, days: number) {
   const d = new Date(iso + "T00:00:00");
   d.setDate(d.getDate() + days);
@@ -21,29 +23,39 @@ function addDaysISO(iso: string, days: number) {
 
 export default function PackageForm({
   clients,
-  initialClientId
+  initialClientId,
+  mode = "create",
+  initial
 }: {
   clients: ClientLite[];
   initialClientId?: string;
+  mode?: "create" | "edit";
+  initial?: any;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const today = new Date().toISOString().split("T")[0];
+  const isEdit = mode === "edit";
+
+  const presetLabel = isEdit
+    ? (INTERVAL_PRESETS.find(p => p.days === initial?.interval_days)?.label ?? "Custom")
+    : "Weekly";
 
   const [f, setF] = useState({
-    client_id: initialClientId ?? "",
-    name: "",
-    total_sessions: 6,
-    price: 0,
-    amount_paid: 0,
-    start_date: today,
+    client_id: initial?.client_id ?? initialClientId ?? "",
+    name: initial?.name ?? "",
+    total_sessions: initial?.total_sessions ?? 6,
+    price: initial?.price ?? 0,
+    amount_paid: initial?.amount_paid ?? 0,
+    start_date: initial?.start_date ?? today,
     first_time: "10:00",
-    valid_until: "",
-    interval_label: "Weekly",
-    interval_days: 7,
-    generate_appointments: true,
-    notes: ""
+    valid_until: initial?.valid_until ?? "",
+    interval_label: initial?.interval_label ?? presetLabel,
+    interval_days: initial?.interval_days ?? 7,
+    generate_appointments: !isEdit,
+    notes: initial?.notes ?? "",
+    status: initial?.status ?? "Active"
   });
   const set = (k: string, v: any) => setF(p => ({ ...p, [k]: v }));
 
@@ -51,7 +63,6 @@ export default function PackageForm({
   const status = balance === 0 && Number(f.price) > 0 ? "Paid"
     : Number(f.amount_paid) > 0 ? "Partial" : "Unpaid";
 
-  // Preview of generated appointment dates
   const previewDates = useMemo(() => {
     if (!f.generate_appointments || !f.start_date || !f.total_sessions || f.total_sessions < 1) return [];
     const out: string[] = [];
@@ -73,6 +84,35 @@ export default function PackageForm({
       const supabase = createSupabaseBrowserClient();
       const { data: { user } } = await supabase.auth.getUser();
 
+      if (isEdit) {
+        const pkgPayload: any = {
+          name: f.name.trim(),
+          total_sessions: sessions,
+          price: Number(f.price) || 0,
+          amount_paid: Number(f.amount_paid) || 0,
+          start_date: f.start_date || null,
+          valid_until: f.valid_until || null,
+          interval_days: intervalDays || null,
+          interval_label: f.interval_label,
+          status: f.status
+        };
+        const { error: updErr } = await supabase
+          .from("packages").update(pkgPayload).eq("id", initial!.id);
+        if (updErr) { setErr(updErr.message); return; }
+
+        await supabase.from("activity_logs").insert({
+          actor_id: user?.id,
+          action: "edited package",
+          entity: "package",
+          entity_id: initial!.id,
+          details: `${f.name.trim()} (${sessions} sessions, ${formatCurrency(Number(f.price) || 0)})`
+        });
+
+        router.push("/packages");
+        router.refresh();
+        return;
+      }
+
       const pkgPayload: any = {
         client_id: f.client_id,
         name: f.name.trim(),
@@ -93,7 +133,6 @@ export default function PackageForm({
       if (insertErr) { setErr(insertErr.message); return; }
       const pkgId = pkg!.id;
 
-      // Mirror package summary on the client profile (handy for at-a-glance display).
       await supabase.from("clients").update({
         package_availed: f.name.trim(),
         total_sessions: sessions,
@@ -102,7 +141,6 @@ export default function PackageForm({
         updated_by: user?.id ?? null
       }).eq("id", f.client_id);
 
-      // If there's a price and an initial amount_paid, record a payment row so history is consistent.
       if (Number(f.amount_paid) > 0) {
         await supabase.from("payments").insert({
           client_id: f.client_id,
@@ -114,7 +152,6 @@ export default function PackageForm({
         });
       }
 
-      // Auto-generate appointments
       if (f.generate_appointments && f.start_date && sessions >= 1) {
         const rows = [] as any[];
         for (let i = 0; i < sessions; i++) {
@@ -131,7 +168,6 @@ export default function PackageForm({
         }
         const { error: apptErr } = await supabase.from("appointments").insert(rows);
         if (apptErr) {
-          // Non-fatal: package is created already; surface but continue.
           setErr(`Package created, but auto-scheduling failed: ${apptErr.message}`);
         }
       }
@@ -154,7 +190,12 @@ export default function PackageForm({
       <Section title="Client & Package">
         <div className="md:col-span-2">
           <label className="label">Client *</label>
-          <select className="input" value={f.client_id} onChange={e => set("client_id", e.target.value)}>
+          <select
+            className="input"
+            value={f.client_id}
+            onChange={e => set("client_id", e.target.value)}
+            disabled={isEdit}
+          >
             <option value="">Select client...</option>
             {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
           </select>
@@ -169,8 +210,16 @@ export default function PackageForm({
         </div>
         <div>
           <label className="label">Valid Until</label>
-          <input type="date" className="input" value={f.valid_until} onChange={e => set("valid_until", e.target.value)} />
+          <input type="date" className="input" value={f.valid_until ?? ""} onChange={e => set("valid_until", e.target.value)} />
         </div>
+        {isEdit && (
+          <div>
+            <label className="label">Status</label>
+            <select className="input" value={f.status} onChange={e => set("status", e.target.value)}>
+              {STATUSES.map(s => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+        )}
       </Section>
 
       <Section title="Payment">
@@ -179,7 +228,7 @@ export default function PackageForm({
           <input type="number" step="0.01" min="0" className="input" value={f.price} onChange={e => set("price", e.target.value)} />
         </div>
         <div>
-          <label className="label">Amount Paid Now</label>
+          <label className="label">Amount Paid {isEdit ? "(total)" : "Now"}</label>
           <input type="number" step="0.01" min="0" className="input" value={f.amount_paid} onChange={e => set("amount_paid", e.target.value)} />
         </div>
         <div className="md:col-span-2 grid grid-cols-2 gap-3">
@@ -190,13 +239,15 @@ export default function PackageForm({
 
       <Section title="Schedule">
         <div>
-          <label className="label">First Appointment Date</label>
-          <input type="date" className="input" value={f.start_date} onChange={e => set("start_date", e.target.value)} />
+          <label className="label">{isEdit ? "Start Date" : "First Appointment Date"}</label>
+          <input type="date" className="input" value={f.start_date ?? ""} onChange={e => set("start_date", e.target.value)} />
         </div>
-        <div>
-          <label className="label">First Appointment Time</label>
-          <input type="time" className="input" value={f.first_time} onChange={e => set("first_time", e.target.value)} />
-        </div>
+        {!isEdit && (
+          <div>
+            <label className="label">First Appointment Time</label>
+            <input type="time" className="input" value={f.first_time} onChange={e => set("first_time", e.target.value)} />
+          </div>
+        )}
         <div>
           <label className="label">Interval</label>
           <select
@@ -216,22 +267,24 @@ export default function PackageForm({
           <label className="label">Interval (days)</label>
           <input
             type="number" min="0" className="input"
-            value={f.interval_days}
+            value={f.interval_days ?? 0}
             onChange={e => set("interval_days", e.target.value)}
             disabled={f.interval_label !== "Custom"}
           />
         </div>
-        <div className="md:col-span-2 flex items-center gap-2">
-          <input
-            id="autogen" type="checkbox" className="h-4 w-4"
-            checked={f.generate_appointments}
-            onChange={e => set("generate_appointments", e.target.checked)}
-          />
-          <label htmlFor="autogen" className="text-sm">
-            Auto-generate {f.total_sessions || 0} appointment{Number(f.total_sessions) === 1 ? "" : "s"} from the first appointment date
-          </label>
-        </div>
-        {f.generate_appointments && previewDates.length > 0 && (
+        {!isEdit && (
+          <div className="md:col-span-2 flex items-center gap-2">
+            <input
+              id="autogen" type="checkbox" className="h-4 w-4"
+              checked={f.generate_appointments}
+              onChange={e => set("generate_appointments", e.target.checked)}
+            />
+            <label htmlFor="autogen" className="text-sm">
+              Auto-generate {f.total_sessions || 0} appointment{Number(f.total_sessions) === 1 ? "" : "s"} from the first appointment date
+            </label>
+          </div>
+        )}
+        {!isEdit && f.generate_appointments && previewDates.length > 0 && (
           <div className="md:col-span-2 text-xs rounded-xl border bg-white/50 p-3" style={{ borderColor: "var(--color-border)", color: "var(--color-muted)" }}>
             Preview:&nbsp;
             {previewDates.map((d, i) => <span key={i}>{i > 0 && " · "}{d}</span>)}
@@ -243,7 +296,9 @@ export default function PackageForm({
       {err && <p className="text-sm text-red-700">{err}</p>}
       <div className="flex justify-end gap-2">
         <button type="button" className="btn-ghost" onClick={() => router.back()}>Cancel</button>
-        <button className="btn-primary" disabled={pending}>{pending ? "Saving..." : "Create Package"}</button>
+        <button className="btn-primary" disabled={pending}>
+          {pending ? "Saving..." : isEdit ? "Save Changes" : "Create Package"}
+        </button>
       </div>
     </form>
   );

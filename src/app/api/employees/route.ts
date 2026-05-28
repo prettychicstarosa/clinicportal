@@ -37,9 +37,19 @@ export async function POST(req: Request) {
 
   try {
     if (action === "create") {
-      const { full_name, email, password } = body;
+      const { full_name, username, password, is_active } = body;
       let { role } = body as { role: string };
-      if (!email || !password) return NextResponse.json({ error: "Email and password required" }, { status: 400 });
+      const rawUsername = (username ?? "").toString().trim().toLowerCase();
+      if (!rawUsername || !password) {
+        return NextResponse.json({ error: "Username and password required" }, { status: 400 });
+      }
+      if (!/^[a-z0-9._-]+$/.test(rawUsername)) {
+        return NextResponse.json(
+          { error: "Username may only contain letters, numbers, dots, dashes, and underscores" },
+          { status: 400 }
+        );
+      }
+      const email = rawUsername.includes("@") ? rawUsername : `${rawUsername}@prettychic.local`;
       // Only an owner can mint another owner. Admins create staff/admin only.
       if (role === "owner" && actorRole !== "owner") {
         return NextResponse.json({ error: "Only the owner can create another owner account" }, { status: 403 });
@@ -47,14 +57,18 @@ export async function POST(req: Request) {
       if (!["owner", "admin", "staff"].includes(role)) role = "staff";
       const { data, error } = await admin.auth.admin.createUser({
         email, password, email_confirm: true,
-        user_metadata: { full_name, role }
+        user_metadata: { full_name, role, username: rawUsername }
       });
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
       await admin.from("profiles").upsert({
-        id: data.user!.id, full_name: full_name ?? "", email, role, is_active: true
+        id: data.user!.id,
+        full_name: full_name ?? "",
+        email,
+        role,
+        is_active: is_active === false ? false : true
       });
-      await logAdminAction("created staff account", `${email} (${role})`, data.user!.id);
-      return NextResponse.json({ ok: true });
+      await logAdminAction("created staff account", `${rawUsername} (${role})`, data.user!.id);
+      return NextResponse.json({ ok: true, username: rawUsername, email });
     }
 
     if (action === "toggle_active") {

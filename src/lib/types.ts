@@ -36,6 +36,7 @@ export type Client = {
   signed_consent: boolean;
   notes: string | null;
   allergies: string | null;
+  emergency_contact: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -107,7 +108,10 @@ export type Expense = {
 };
 
 export type ContainerType = "unit" | "vial" | "box" | "bottle" | "tube";
-export type ConsumeUnit = "ml" | "mg" | "vial" | "box" | "tube" | "bottle" | "piece";
+export type ConsumeUnit =
+  | "ml" | "mg" | "vial" | "box" | "tube" | "bottle" | "piece"
+  | "syringe" | "ampoule" | "capsule" | "tablet" | "pack" | "kit"
+  | "session use" | "custom";
 
 export type InventoryItem = {
   id: string;

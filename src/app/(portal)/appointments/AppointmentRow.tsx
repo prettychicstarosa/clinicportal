@@ -47,19 +47,21 @@ export default function AppointmentRow({ appt, isAdmin }: { appt: any; isAdmin: 
 
   return (
     <tr>
-      <td className="table-td">{formatDate(appt.date)}</td>
-      <td className="table-td">{appt.time?.slice(0, 5)}</td>
       <td className="table-td">
-        <Link href={`/clients/${appt.client_id}`} className="underline">
+        <Link href={`/clients/${appt.client_id}`} className="underline font-medium">
           {appt.clients?.full_name}
         </Link>
       </td>
       <td className="table-td">
-        {appt.treatment ?? appt.packages?.name ?? "—"}
-        {appt.packages?.name && appt.treatment && (
-          <div className="text-xs" style={{ color: "var(--color-muted)" }}>{appt.packages.name}</div>
+        {appt.packages?.name ?? <span style={{ color: "var(--color-muted)" }}>—</span>}
+        {appt.session_index && appt.packages?.name && (
+          <div className="text-xs" style={{ color: "var(--color-muted)" }}>
+            Session {appt.session_index}
+          </div>
         )}
       </td>
+      <td className="table-td">{formatDate(appt.date)}</td>
+      <td className="table-td">{appt.time?.slice(0, 5)}</td>
       <td className="table-td">
         <select
           disabled={pending}

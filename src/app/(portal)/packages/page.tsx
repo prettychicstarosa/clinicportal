@@ -37,6 +37,7 @@ export default async function PackagesPage() {
                 <th className="table-th">Start</th>
                 <th className="table-th">Valid Until</th>
                 <th className="table-th">Interval</th>
+                <th className="table-th"></th>
               </tr>
             </thead>
             <tbody>
@@ -64,11 +65,14 @@ export default async function PackagesPage() {
                     <td className="table-td">{formatDate(p.start_date)}</td>
                     <td className="table-td">{formatDate(p.valid_until)}</td>
                     <td className="table-td">{p.interval_label ?? (p.interval_days ? `${p.interval_days}d` : "—")}</td>
+                    <td className="table-td text-right">
+                      <Link href={`/packages/${p.id}/edit`} className="text-xs underline">Edit</Link>
+                    </td>
                   </tr>
                 );
               })}
               {(!packages || packages.length === 0) && (
-                <tr><td colSpan={11} className="table-td text-center" style={{ color: "var(--color-muted)" }}>No packages yet.</td></tr>
+                <tr><td colSpan={12} className="table-td text-center" style={{ color: "var(--color-muted)" }}>No packages yet.</td></tr>
               )}
             </tbody>
           </table>

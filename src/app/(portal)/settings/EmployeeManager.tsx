@@ -11,6 +11,11 @@ type Employee = {
   is_active: boolean;
 };
 
+function displayUsername(email: string) {
+  if (!email) return "";
+  return email.endsWith("@prettychic.local") ? email.split("@")[0] : email;
+}
+
 export default function EmployeeManager({
   employees,
   currentUserId,
@@ -27,9 +32,10 @@ export default function EmployeeManager({
   const [ok, setOk] = useState<string | null>(null);
   const [f, setF] = useState({
     full_name: "",
-    email: "",
+    username: "",
     password: "",
-    role: "staff" as Role
+    role: "staff" as Role,
+    is_active: true
   });
 
   const isOwner = currentUserRole === "owner";
@@ -51,8 +57,8 @@ export default function EmployeeManager({
     start(async () => {
       const success = await call("create", f);
       if (success) {
-        setOk(`Account created for ${f.email}`);
-        setF({ full_name: "", email: "", password: "", role: "staff" });
+        setOk(`Account created for ${f.username}`);
+        setF({ full_name: "", username: "", password: "", role: "staff", is_active: true });
         setShowNew(false);
         router.refresh();
       }
@@ -73,16 +79,16 @@ export default function EmployeeManager({
     });
   }
   function resetPassword(emp: Employee) {
-    const pw = window.prompt(`Set a new password for ${emp.email}\n(min 6 characters)`);
+    const pw = window.prompt(`Set a new password for ${displayUsername(emp.email)}\n(min 6 characters)`);
     if (!pw) return;
     start(async () => {
       const success = await call("reset_password", { user_id: emp.id, password: pw });
-      if (success) setOk(`Password updated for ${emp.email}`);
+      if (success) setOk(`Password updated for ${displayUsername(emp.email)}`);
     });
   }
   function remove(emp: Employee) {
     if (emp.role === "owner") return;
-    if (!confirm(`Delete account ${emp.email}? This cannot be undone.`)) return;
+    if (!confirm(`Delete account ${displayUsername(emp.email)}? This cannot be undone.`)) return;
     start(async () => {
       const success = await call("delete", { user_id: emp.id });
       if (success) router.refresh();
@@ -104,8 +110,19 @@ export default function EmployeeManager({
         <form onSubmit={create} className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 rounded-2xl border bg-white/60" style={{ borderColor: "var(--color-border)" }}>
           <div><label className="label">Full Name</label>
             <input required className="input" value={f.full_name} onChange={e => setF({ ...f, full_name: e.target.value })} /></div>
-          <div><label className="label">Email / Username</label>
-            <input required type="email" className="input" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} /></div>
+          <div><label className="label">Username</label>
+            <input
+              required
+              pattern="[A-Za-z0-9._-]+"
+              className="input"
+              placeholder="e.g. staff1"
+              value={f.username}
+              onChange={e => setF({ ...f, username: e.target.value })}
+            />
+            <p className="text-xs mt-1" style={{ color: "var(--color-muted)" }}>
+              Letters, numbers, dots, dashes, and underscores only. No email needed.
+            </p>
+          </div>
           <div><label className="label">Password</label>
             <input required type="password" minLength={6} className="input" value={f.password} onChange={e => setF({ ...f, password: e.target.value })} /></div>
           <div><label className="label">Role</label>
@@ -114,6 +131,16 @@ export default function EmployeeManager({
               <option value="admin">Admin</option>
               {isOwner && <option value="owner">Owner</option>}
             </select></div>
+          <div className="md:col-span-2 flex items-center gap-2">
+            <input
+              id="active"
+              type="checkbox"
+              className="h-4 w-4"
+              checked={f.is_active}
+              onChange={e => setF({ ...f, is_active: e.target.checked })}
+            />
+            <label htmlFor="active" className="text-sm">Active</label>
+          </div>
           <div className="md:col-span-2 flex justify-end">
             <button className="btn-primary" disabled={pending}>{pending ? "Creating..." : "Create account"}</button>
           </div>
@@ -128,7 +155,7 @@ export default function EmployeeManager({
           <table className="w-full">
             <thead className="bg-beige-100">
               <tr>
-                <th className="table-th">Name</th><th className="table-th">Email</th>
+                <th className="table-th">Name</th><th className="table-th">Username</th>
                 <th className="table-th">Role</th><th className="table-th">Status</th>
                 <th className="table-th text-right"></th>
               </tr>
@@ -143,7 +170,7 @@ export default function EmployeeManager({
                       {emp.full_name || "—"}
                       {isOwnerRow && <span className="ml-2 badge badge-blue">Owner</span>}
                     </td>
-                    <td className="table-td">{emp.email}</td>
+                    <td className="table-td">{displayUsername(emp.email)}</td>
                     <td className="table-td">
                       <select
                         className="input !py-1 !text-xs"

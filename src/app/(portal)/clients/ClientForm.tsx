@@ -15,15 +15,11 @@ export default function ClientForm({ mode, initial = {} }: Props) {
     mobile: initial.mobile ?? "",
     age: initial.age ?? "",
     birthday: initial.birthday ?? "",
-    treatment_interested: initial.treatment_interested ?? "",
-    package_availed: initial.package_availed ?? "",
-    valid_until: initial.valid_until ?? "",
-    balance: initial.balance ?? 0,
-    payment_status: initial.payment_status ?? "Unpaid",
     registration_date: initial.registration_date ?? new Date().toISOString().split("T")[0],
     signed_consent: initial.signed_consent ?? false,
     notes: initial.notes ?? "",
-    allergies: initial.allergies ?? ""
+    allergies: initial.allergies ?? "",
+    emergency_contact: initial.emergency_contact ?? ""
   });
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
 
@@ -34,11 +30,15 @@ export default function ClientForm({ mode, initial = {} }: Props) {
       const supabase = createSupabaseBrowserClient();
       const { data: { user } } = await supabase.auth.getUser();
       const payload: any = {
-        ...f,
+        full_name: f.full_name,
+        mobile: f.mobile,
         age: f.age === "" ? null : Number(f.age),
-        balance: Number(f.balance) || 0,
         birthday: f.birthday || null,
-        valid_until: f.valid_until || null,
+        registration_date: f.registration_date,
+        signed_consent: !!f.signed_consent,
+        notes: f.notes,
+        allergies: f.allergies,
+        emergency_contact: f.emergency_contact,
         updated_by: user?.id ?? null
       };
       if (mode === "create") {
@@ -79,23 +79,10 @@ export default function ClientForm({ mode, initial = {} }: Props) {
           <input type="date" className="input" value={f.birthday ?? ""} onChange={e => set("birthday", e.target.value)} /></div>
         <div><label className="label">Registration Date</label>
           <input type="date" className="input" value={f.registration_date} onChange={e => set("registration_date", e.target.value)} /></div>
-      </Section>
-
-      <Section title="Treatment & Package">
-        <div><label className="label">Treatment Interested</label>
-          <input className="input" placeholder="e.g. Facial, Laser, Botox" value={f.treatment_interested} onChange={e => set("treatment_interested", e.target.value)} /></div>
-        <div><label className="label">Package Availed</label>
-          <input className="input" placeholder="e.g. Glow-Up 6-Session Bundle" value={f.package_availed} onChange={e => set("package_availed", e.target.value)} /></div>
-        <div><label className="label">Validity Date</label>
-          <input type="date" className="input" value={f.valid_until ?? ""} onChange={e => set("valid_until", e.target.value)} /></div>
-        <div><label className="label">Balance</label>
-          <input type="number" step="0.01" className="input" value={f.balance} onChange={e => set("balance", e.target.value)} /></div>
-        <div><label className="label">Payment Status</label>
-          <select className="input" value={f.payment_status} onChange={e => set("payment_status", e.target.value)}>
-            <option>Paid</option><option>Partial</option><option>Unpaid</option>
-          </select></div>
+        <div className="md:col-span-2"><label className="label">Emergency Contact</label>
+          <input className="input" placeholder="Name and number" value={f.emergency_contact} onChange={e => set("emergency_contact", e.target.value)} /></div>
         <p className="md:col-span-2 text-xs" style={{ color: "var(--color-muted)" }}>
-          Tip: sessions are tracked automatically when you add packages from the Packages module — no need to enter session counts here.
+          Packages, payments, and sessions are managed from the Packages module — no need to enter them here.
         </p>
       </Section>
 

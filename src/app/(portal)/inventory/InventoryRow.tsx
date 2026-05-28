@@ -7,7 +7,11 @@ import { formatDateTime } from "@/lib/utils";
 
 type ClientLite = { id: string; full_name: string };
 
-const ALL_UNITS = ["ml", "mg", "vial", "box", "bottle", "tube", "piece"] as const;
+const ALL_UNITS = [
+  "ml", "mg", "vial", "box", "tube", "bottle", "piece",
+  "syringe", "ampoule", "capsule", "tablet", "pack", "kit",
+  "session use", "custom"
+] as const;
 
 export default function InventoryRow({
   item,
@@ -23,32 +27,31 @@ export default function InventoryRow({
   const [open, setOpen] = useState<null | "add" | "consume">(null);
   const [qty, setQty] = useState<string>("");
   const containerized = item.container_type && item.container_type !== "unit";
-  const [unit, setUnit] = useState<string>(
-    item.consume_unit ?? (containerized ? item.container_unit ?? "ml" : "piece")
-  );
+  const defaultUnit = item.consume_unit ?? (containerized ? item.container_unit ?? "ml" : "piece");
+  const [unit, setUnit] = useState<string>(defaultUnit);
+  const [customUnit, setCustomUnit] = useState<string>("");
   const [clientId, setClientId] = useState<string>("");
   const [note, setNote] = useState<string>("");
 
   function reset() {
     setOpen(null); setQty(""); setClientId(""); setNote("");
-    setUnit(item.consume_unit ?? (containerized ? item.container_unit ?? "ml" : "piece"));
+    setUnit(defaultUnit);
+    setCustomUnit("");
   }
 
-  // How much of remaining_stock does `qty` of `unit` represent?
   function toBaseDelta(): number {
     const n = Number(qty);
     if (!Number.isFinite(n) || n <= 0) return NaN;
     if (!containerized) return n;
-    // Containerized: remaining_stock is in container_unit (ml or mg).
     if (unit === item.container_unit) return n;
     if (unit === item.container_type) return n * Number(item.container_size || 0);
-    // Different sub-unit (ml vs mg) — fall back to direct (treat as same magnitude).
     return n;
   }
 
   function submit() {
     const delta = toBaseDelta();
     if (!Number.isFinite(delta) || delta <= 0) { alert("Enter a positive quantity"); return; }
+    const finalUnit = unit === "custom" ? (customUnit.trim() || "custom") : unit;
 
     start(async () => {
       const supabase = createSupabaseBrowserClient();
@@ -68,7 +71,7 @@ export default function InventoryRow({
         item_id: item.id,
         action: open,
         quantity: Number(qty),
-        unit,
+        unit: finalUnit,
         client_id: clientId || null,
         note: note || null,
         performed_by: user?.id
@@ -79,7 +82,7 @@ export default function InventoryRow({
         actor_id: user?.id,
         action: open === "add" ? "added stock" : "consumed stock",
         entity: "inventory", entity_id: item.id,
-        details: `${qty} ${unit} ${item.name}${clientName ? ` · for ${clientName}` : ""}`
+        details: `${qty} ${finalUnit} ${item.name}${clientName ? ` · for ${clientName}` : ""}`
       });
 
       reset();
@@ -117,11 +120,6 @@ export default function InventoryRow({
       </div>
     )
     : <span>{Number(item.remaining_stock)} pcs</span>;
-
-  // Unit options shown in the consume/add modal.
-  const unitOptions = containerized
-    ? [item.container_unit, item.container_type].filter(Boolean)
-    : ["piece"];
 
   return (
     <>
@@ -174,11 +172,22 @@ export default function InventoryRow({
                 <div>
                   <label className="label">Unit</label>
                   <select className="input" value={unit} onChange={e => setUnit(e.target.value)}>
-                    {unitOptions.map(u => <option key={u} value={u}>{u}</option>)}
+                    {ALL_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
+                {unit === "custom" && (
+                  <div>
+                    <label className="label">Custom unit</label>
+                    <input
+                      className="input"
+                      value={customUnit}
+                      onChange={e => setCustomUnit(e.target.value)}
+                      placeholder="e.g. patch"
+                    />
+                  </div>
+                )}
                 {open === "consume" && (
-                  <div className="md:col-span-2">
+                  <div className={unit === "custom" ? "md:col-span-1" : "md:col-span-2"}>
                     <label className="label">For Client (optional)</label>
                     <select className="input" value={clientId} onChange={e => setClientId(e.target.value)}>
                       <option value="">— No client —</option>

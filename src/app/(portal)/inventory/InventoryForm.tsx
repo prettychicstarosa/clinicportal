@@ -6,7 +6,11 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 const TYPES = ["Medicine", "Tool", "Kit", "Consumable"];
 const CONTAINER_TYPES = ["unit", "vial", "box", "bottle", "tube"] as const;
 const CONTAINER_UNITS = ["ml", "mg"] as const;
-const CONSUME_UNITS = ["ml", "mg", "vial", "box", "bottle", "tube", "piece"] as const;
+const CONSUME_UNITS = [
+  "ml", "mg", "vial", "box", "bottle", "tube", "piece",
+  "syringe", "ampoule", "capsule", "tablet", "pack", "kit",
+  "session use", "custom"
+] as const;
 
 export default function InventoryForm({
   mode, initial = {} as any, defaultAlert = 5

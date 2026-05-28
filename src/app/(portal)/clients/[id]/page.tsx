@@ -63,8 +63,7 @@ export default async function ClientProfile({ params }: { params: { id: string }
             <Info label="Mobile" value={client.mobile} />
             <Info label="Age" value={client.age} />
             <Info label="Birthday" value={formatDate(client.birthday)} />
-            <Info label="Treatment Interested" value={client.treatment_interested} />
-            <Info label="Package Availed" value={client.package_availed} />
+            <Info label="Emergency Contact" value={client.emergency_contact} />
             <Info label="Consent Signed" value={client.signed_consent ? "Yes" : "No"} />
           </dl>
           {client.allergies && (
@@ -101,6 +100,7 @@ export default async function ClientProfile({ params }: { params: { id: string }
                   <th className="table-th">Payment</th>
                   <th className="table-th">Status</th>
                   <th className="table-th">Valid Until</th>
+                  <th className="table-th"></th>
                 </tr>
               </thead>
               <tbody>
@@ -117,6 +117,9 @@ export default async function ClientProfile({ params }: { params: { id: string }
                       <td className="table-td"><span className={"badge " + payCls}>{p.payment_status}</span></td>
                       <td className="table-td"><span className="badge badge-gray">{p.status}</span></td>
                       <td className="table-td">{formatDate(p.valid_until)}</td>
+                      <td className="table-td text-right">
+                        <Link href={`/packages/${p.id}/edit`} className="text-xs underline">Edit</Link>
+                      </td>
                     </tr>
                   );
                 })}

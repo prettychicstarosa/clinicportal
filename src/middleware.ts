@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
-const PUBLIC_PATHS = ["/login", "/register", "/_next", "/favicon.ico", "/api/health"];
+const PUBLIC_PATHS = ["/login", "/register", "/reset-password", "/_next", "/favicon.ico", "/api/health"];
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();

@@ -4,17 +4,17 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatDate } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import AppointmentRow from "./AppointmentRow";
-import { getCurrentProfile } from "@/lib/auth";
+import { getCurrentProfile, isManager } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function AppointmentsPage({ searchParams }: { searchParams: { view?: string; date?: string } }) {
+export default async function AppointmentsPage({ searchParams }: { searchParams: { view?: string } }) {
   const supabase = createSupabaseServerClient();
   const profile = await getCurrentProfile();
   const view = searchParams.view ?? "list";
   const { data: appts } = await supabase
     .from("appointments")
-    .select("*, clients(full_name)")
+    .select("*, clients(full_name), packages(name)")
     .order("date", { ascending: false })
     .order("time", { ascending: true })
     .limit(200);
@@ -33,9 +33,9 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
         subtitle="Schedule, reschedule, and track attendance"
         action={
           <div className="flex gap-2">
-            <Link href="/appointments?view=list" className={`btn-ghost ${view==="list"?"!bg-beige-100":""}`}>List</Link>
-            <Link href="/appointments?view=calendar" className={`btn-ghost ${view==="calendar"?"!bg-beige-100":""}`}>Calendar</Link>
-            <Link href="/appointments/new" className="btn-primary"><Plus size={16}/> New</Link>
+            <Link href="/appointments?view=list" className={`btn-ghost ${view === "list" ? "!bg-beige-100" : ""}`}>List</Link>
+            <Link href="/appointments?view=calendar" className={`btn-ghost ${view === "calendar" ? "!bg-beige-100" : ""}`}>Calendar</Link>
+            <Link href="/appointments/new" className="btn-primary"><Plus size={16} /> New</Link>
           </div>
         }
       />
@@ -46,9 +46,14 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
             <div key={date} className="card">
               <h3 className="font-serif text-lg mb-3" style={{ color: "var(--color-primary)" }}>{formatDate(date)}</h3>
               <ul className="space-y-2">
-                {items.map((a:any) => (
+                {items.map((a: any) => (
                   <li key={a.id} className="flex items-center justify-between text-sm">
-                    <span>{a.time?.slice(0,5)} — <Link href={`/clients/${a.client_id}`} className="underline">{a.clients?.full_name}</Link> · {a.treatment ?? "—"}</span>
+                    <span>
+                      {a.time?.slice(0, 5)} —{" "}
+                      <Link href={`/clients/${a.client_id}`} className="underline">{a.clients?.full_name}</Link>
+                      {" · "}
+                      {a.treatment ?? a.packages?.name ?? "—"}
+                    </span>
                     <span className="badge badge-gray">{a.status}</span>
                   </li>
                 ))}
@@ -64,16 +69,16 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
               <thead className="bg-beige-100">
                 <tr>
                   <th className="table-th">Date</th><th className="table-th">Time</th>
-                  <th className="table-th">Client</th><th className="table-th">Treatment</th>
+                  <th className="table-th">Client</th><th className="table-th">Treatment / Package</th>
                   <th className="table-th">Status</th><th className="table-th">Notes</th>
                   <th className="table-th"></th>
                 </tr>
               </thead>
               <tbody>
-                {(appts ?? []).map((a:any) => (
-                  <AppointmentRow key={a.id} appt={a} isAdmin={profile.role === "admin"} />
+                {(appts ?? []).map((a: any) => (
+                  <AppointmentRow key={a.id} appt={a} isAdmin={isManager(profile.role)} />
                 ))}
-                {(!appts || appts.length===0) && (
+                {(!appts || appts.length === 0) && (
                   <tr><td colSpan={7} className="table-td text-center" style={{ color: "var(--color-muted)" }}>No appointments yet.</td></tr>
                 )}
               </tbody>

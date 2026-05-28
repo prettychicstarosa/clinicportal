@@ -12,10 +12,10 @@ const NAV = [
   { href: "/dashboard",    label: "Dashboard",    icon: LayoutDashboard },
   { href: "/clients",      label: "Clients",      icon: Users },
   { href: "/appointments", label: "Appointments", icon: CalendarDays },
-  { href: "/sessions",     label: "Sessions",     icon: Sparkles },
-  { href: "/expenses",     label: "Expenses",     icon: Receipt },
-  { href: "/inventory",    label: "Meds & Kits",  icon: Package },
+  { href: "/packages",     label: "Packages",     icon: Sparkles },
   { href: "/payments",     label: "Payments",     icon: CreditCard },
+  { href: "/inventory",    label: "Inventory",    icon: Package },
+  { href: "/expenses",     label: "Expenses",     icon: Receipt },
   { href: "/reports",      label: "Reports",      icon: BarChart3 },
   { href: "/settings",     label: "Settings",     icon: SettingsIcon }
 ];
@@ -33,6 +33,7 @@ export function Sidebar({ clinicName, logoUrl, userName, role }: Props) {
     await fetch("/api/auth/signout", { method: "POST" });
     window.location.href = "/login";
   }
+  const roleLabel = role === "owner" ? "Owner" : role === "admin" ? "Admin" : "Staff";
   return (
     <aside
       className="hidden md:flex md:flex-col w-64 min-h-screen px-4 py-6 gap-2"
@@ -64,7 +65,7 @@ export function Sidebar({ clinicName, logoUrl, userName, role }: Props) {
       </nav>
       <div className="mt-6 border-t border-white/10 pt-4 px-2 text-xs">
         <div className="font-medium">{userName}</div>
-        <div className="opacity-70 capitalize">{role}</div>
+        <div className="opacity-70">{roleLabel}</div>
         <button
           onClick={signOut}
           className="mt-3 flex items-center gap-2 text-white/80 hover:text-white"

@@ -10,7 +10,7 @@ const NAV = [
   { href: "/dashboard",    label: "Home",     icon: LayoutDashboard },
   { href: "/clients",      label: "Clients",  icon: Users },
   { href: "/appointments", label: "Appts",    icon: CalendarDays },
-  { href: "/sessions",     label: "Sessions", icon: Sparkles },
+  { href: "/packages",     label: "Packages", icon: Sparkles },
   { href: "/inventory",    label: "Stock",    icon: Package },
   { href: "/settings",     label: "Settings", icon: SettingsIcon }
 ];

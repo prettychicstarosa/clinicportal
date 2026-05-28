@@ -5,7 +5,9 @@
 :root {
   --color-bg: #FBF7F1;
   --color-surface: #FBF4E6;
+  --color-surface-2: #F6EFE4;
   --color-primary: #503626;
+  --color-primary-soft: #6B4A37;
   --color-sidebar: #2B1C13;
   --color-sidebar-text: #F6EFE4;
   --color-accent: #C18B7B;
@@ -23,9 +25,12 @@ html, body {
 
 @layer components {
   .card {
-    @apply rounded-2xl border shadow-card p-5;
+    @apply rounded-2xl border shadow-card p-5 transition;
     background-color: var(--color-surface);
     border-color: var(--color-border);
+  }
+  .card:hover {
+    box-shadow: 0 6px 18px -8px rgba(80, 54, 38, 0.16);
   }
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50;
@@ -35,19 +40,35 @@ html, body {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium border transition hover:bg-beige-100;
     border-color: var(--color-border);
     color: var(--color-text);
+    background-color: rgba(255, 255, 255, 0.5);
   }
   .btn-danger {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white bg-red-700 hover:bg-red-800;
   }
   .input {
-    @apply w-full rounded-xl border px-3 py-2 text-sm bg-white outline-none focus:ring-2;
+    @apply w-full rounded-xl border px-3 py-2 text-sm bg-white outline-none focus:ring-2 transition;
     border-color: var(--color-border);
   }
-  .input:focus { box-shadow: 0 0 0 2px rgba(193,139,123,0.35); }
-  .label { @apply block text-xs font-medium mb-1; color: var(--color-muted); }
-  .table-th { @apply text-left text-xs font-semibold uppercase tracking-wide px-4 py-3; color: var(--color-muted); }
-  .table-td { @apply px-4 py-3 text-sm border-t; border-color: var(--color-border); }
-  .badge { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium; }
+  .input:focus { box-shadow: 0 0 0 2px rgba(193, 139, 123, 0.35); }
+  .input:disabled { background-color: #f8f4ec; color: #8e6a52; }
+  .label {
+    @apply block text-xs font-medium mb-1 uppercase tracking-wide;
+    color: var(--color-muted);
+  }
+  .table-th {
+    @apply text-left text-xs font-semibold uppercase tracking-wide px-4 py-3;
+    color: var(--color-muted);
+  }
+  .table-td {
+    @apply px-4 py-3 text-sm border-t align-top;
+    border-color: var(--color-border);
+  }
+  tbody tr:hover .table-td {
+    background-color: rgba(246, 239, 228, 0.4);
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
   .badge-green { @apply bg-green-100 text-green-800; }
   .badge-amber { @apply bg-amber-100 text-amber-800; }
   .badge-red   { @apply bg-red-100 text-red-800; }
@@ -57,7 +78,7 @@ html, body {
 
 .spinner {
   width: 28px; height: 28px;
-  border: 3px solid rgba(80,54,38,0.15);
+  border: 3px solid rgba(80, 54, 38, 0.15);
   border-top-color: var(--color-primary);
   border-radius: 50%;
   animation: spin 0.9s linear infinite;

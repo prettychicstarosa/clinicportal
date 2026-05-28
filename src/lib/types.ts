@@ -1,4 +1,4 @@
-export type Role = "admin" | "staff";
+export type Role = "owner" | "admin" | "staff";
 
 export type Profile = {
   id: string;
@@ -45,6 +45,8 @@ export type Client = {
 export type Appointment = {
   id: string;
   client_id: string;
+  package_id: string | null;
+  session_index: number | null;
   date: string;
   time: string;
   treatment: string | null;
@@ -55,6 +57,26 @@ export type Appointment = {
   created_at: string;
 };
 
+export type Package = {
+  id: string;
+  client_id: string;
+  name: string;
+  total_sessions: number;
+  used_sessions: number;
+  price: number;
+  amount_paid: number;
+  balance: number;
+  payment_status: "Paid" | "Partial" | "Unpaid";
+  status: "Active" | "Completed" | "Cancelled" | "Expired";
+  start_date: string | null;
+  valid_until: string | null;
+  interval_days: number | null;
+  interval_label: string | null;
+  created_at: string;
+  created_by: string | null;
+};
+
+// Kept for backward compat with sessions table (now hidden behind Packages UI).
 export type SessionRow = {
   id: string;
   client_id: string;
@@ -84,6 +106,9 @@ export type Expense = {
   created_at: string;
 };
 
+export type ContainerType = "unit" | "vial" | "box" | "bottle" | "tube";
+export type ConsumeUnit = "ml" | "mg" | "vial" | "box" | "tube" | "bottle" | "piece";
+
 export type InventoryItem = {
   id: string;
   name: string;
@@ -92,6 +117,11 @@ export type InventoryItem = {
   remaining_stock: number;
   low_stock_alert: number;
   stock_status: "Available" | "Low Stock" | "Out of Stock";
+  container_type: ContainerType;
+  container_size: number | null;
+  container_unit: "ml" | "mg" | null;
+  containers: number;
+  consume_unit: ConsumeUnit | null;
   updated_by: string | null;
   updated_at: string;
   created_at: string;
@@ -100,8 +130,12 @@ export type InventoryItem = {
 export type InventoryLog = {
   id: string;
   item_id: string;
-  action: "add" | "consume" | "update" | "create";
+  action: "add" | "consume" | "update" | "create" | "adjust";
   quantity: number;
+  unit: string | null;
+  client_id: string | null;
+  appointment_id: string | null;
+  note: string | null;
   performed_by: string | null;
   created_at: string;
   item_name?: string;
@@ -111,6 +145,7 @@ export type InventoryLog = {
 export type Payment = {
   id: string;
   client_id: string;
+  package_id: string | null;
   amount: number;
   method: string | null;
   notes: string | null;

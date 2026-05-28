@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
-async function requireAdminUser() {
+async function requireManager() {
   const supabase = createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in", status: 401 } as const;
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-  if (!profile || profile.role !== "admin" || !profile.is_active) {
-    return { error: "Admin only", status: 403 } as const;
+  if (!profile || !profile.is_active || (profile.role !== "owner" && profile.role !== "admin")) {
+    return { error: "Manager access required", status: 403 } as const;
   }
   return { user, profile } as const;
 }
@@ -27,45 +27,87 @@ async function logAdminAction(action: string, details?: string, entity_id?: stri
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdminUser();
+  const auth = await requireManager();
   if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await req.json().catch(() => ({}));
   const action = body.action as string;
   const admin = createSupabaseAdminClient();
+  const actorRole = auth.profile.role;
 
   try {
     if (action === "create") {
-      const { full_name, email, password, role } = body;
+      const { full_name, email, password } = body;
+      let { role } = body as { role: string };
       if (!email || !password) return NextResponse.json({ error: "Email and password required" }, { status: 400 });
+      // Only an owner can mint another owner. Admins create staff/admin only.
+      if (role === "owner" && actorRole !== "owner") {
+        return NextResponse.json({ error: "Only the owner can create another owner account" }, { status: 403 });
+      }
+      if (!["owner", "admin", "staff"].includes(role)) role = "staff";
       const { data, error } = await admin.auth.admin.createUser({
         email, password, email_confirm: true,
         user_metadata: { full_name, role }
       });
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-      // ensure profile row matches (handle_new_user trigger creates it)
       await admin.from("profiles").upsert({
-        id: data.user!.id, full_name: full_name ?? "", email, role: role ?? "staff", is_active: true
+        id: data.user!.id, full_name: full_name ?? "", email, role, is_active: true
       });
-      await logAdminAction("created employee account", `${email} (${role})`, data.user!.id);
+      await logAdminAction("created staff account", `${email} (${role})`, data.user!.id);
       return NextResponse.json({ ok: true });
     }
 
     if (action === "toggle_active") {
       const { user_id, is_active } = body;
+      const { data: target } = await admin.from("profiles").select("role").eq("id", user_id).single();
+      if (target?.role === "owner" && !is_active) {
+        return NextResponse.json({ error: "Owner account cannot be disabled" }, { status: 400 });
+      }
       const { error } = await admin.from("profiles").update({ is_active: !!is_active }).eq("id", user_id);
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-      await logAdminAction(is_active ? "enabled employee" : "disabled employee", undefined, user_id);
+      await logAdminAction(is_active ? "enabled staff" : "disabled staff", undefined, user_id);
       return NextResponse.json({ ok: true });
     }
 
     if (action === "change_role") {
       const { user_id, role } = body;
-      if (!["admin","staff"].includes(role)) return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+      if (!["owner", "admin", "staff"].includes(role)) {
+        return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+      }
+      const { data: target } = await admin.from("profiles").select("role").eq("id", user_id).single();
+      if (target?.role === "owner" && role !== "owner") {
+        return NextResponse.json({ error: "Owner role cannot be downgraded" }, { status: 400 });
+      }
+      if (role === "owner" && actorRole !== "owner") {
+        return NextResponse.json({ error: "Only the owner can promote to owner" }, { status: 403 });
+      }
       const { error } = await admin.from("profiles").update({ role }).eq("id", user_id);
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
       await admin.auth.admin.updateUserById(user_id, { user_metadata: { role } });
-      await logAdminAction("changed employee role", `role=${role}`, user_id);
+      await logAdminAction("changed staff role", `role=${role}`, user_id);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (action === "reset_password") {
+      const { user_id, password } = body;
+      if (!password || password.length < 6) {
+        return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+      }
+      const { error } = await admin.auth.admin.updateUserById(user_id, { password });
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      await logAdminAction("reset staff password", undefined, user_id);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (action === "delete") {
+      const { user_id } = body;
+      const { data: target } = await admin.from("profiles").select("role").eq("id", user_id).single();
+      if (target?.role === "owner") {
+        return NextResponse.json({ error: "Owner account cannot be deleted" }, { status: 400 });
+      }
+      const { error: delAuthErr } = await admin.auth.admin.deleteUser(user_id);
+      if (delAuthErr) return NextResponse.json({ error: delAuthErr.message }, { status: 400 });
+      await logAdminAction("deleted staff account", undefined, user_id);
       return NextResponse.json({ ok: true });
     }
 

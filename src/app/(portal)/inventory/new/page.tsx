@@ -7,7 +7,7 @@ export default async function NewInventoryPage() {
   return (
     <div>
       <PageHeader title="Add Inventory Item" />
-      <div className="card max-w-xl"><InventoryForm mode="create" defaultAlert={s.low_stock_default} /></div>
+      <div className="card max-w-3xl"><InventoryForm mode="create" defaultAlert={s.low_stock_default} /></div>
     </div>
   );
 }

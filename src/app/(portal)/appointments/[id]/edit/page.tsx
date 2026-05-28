@@ -7,16 +7,17 @@ export const dynamic = "force-dynamic";
 
 export default async function EditAppt({ params }: { params: { id: string } }) {
   const supabase = createSupabaseServerClient();
-  const [{ data: appt }, { data: clients }] = await Promise.all([
+  const [{ data: appt }, { data: clients }, { data: packages }] = await Promise.all([
     supabase.from("appointments").select("*").eq("id", params.id).single(),
-    supabase.from("clients").select("id, full_name").order("full_name")
+    supabase.from("clients").select("id, full_name").order("full_name"),
+    supabase.from("packages").select("id, name, client_id, total_sessions, used_sessions")
   ]);
   if (!appt) notFound();
   return (
     <div>
       <PageHeader title="Edit Appointment" />
       <div className="card max-w-2xl">
-        <AppointmentForm mode="edit" initial={appt} clients={clients ?? []} />
+        <AppointmentForm mode="edit" initial={appt} clients={clients ?? []} packages={packages ?? []} />
       </div>
     </div>
   );

@@ -17,8 +17,6 @@ export default function ClientForm({ mode, initial = {} }: Props) {
     birthday: initial.birthday ?? "",
     treatment_interested: initial.treatment_interested ?? "",
     package_availed: initial.package_availed ?? "",
-    total_sessions: initial.total_sessions ?? 0,
-    remaining_sessions: initial.remaining_sessions ?? 0,
     valid_until: initial.valid_until ?? "",
     balance: initial.balance ?? 0,
     payment_status: initial.payment_status ?? "Unpaid",
@@ -38,8 +36,6 @@ export default function ClientForm({ mode, initial = {} }: Props) {
       const payload: any = {
         ...f,
         age: f.age === "" ? null : Number(f.age),
-        total_sessions: Number(f.total_sessions) || 0,
-        remaining_sessions: Number(f.remaining_sessions) || 0,
         balance: Number(f.balance) || 0,
         birthday: f.birthday || null,
         valid_until: f.valid_until || null,
@@ -69,49 +65,65 @@ export default function ClientForm({ mode, initial = {} }: Props) {
   }
 
   return (
-    <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div className="md:col-span-2">
-        <label className="label">Full Name *</label>
-        <input required className="input" value={f.full_name} onChange={e => set("full_name", e.target.value)} />
-      </div>
-      <div><label className="label">Mobile Number</label>
-        <input className="input" value={f.mobile} onChange={e => set("mobile", e.target.value)} /></div>
-      <div><label className="label">Age</label>
-        <input type="number" className="input" value={f.age} onChange={e => set("age", e.target.value)} /></div>
-      <div><label className="label">Birthday</label>
-        <input type="date" className="input" value={f.birthday ?? ""} onChange={e => set("birthday", e.target.value)} /></div>
-      <div><label className="label">Treatment Interested</label>
-        <input className="input" value={f.treatment_interested} onChange={e => set("treatment_interested", e.target.value)} /></div>
-      <div><label className="label">Package Availed</label>
-        <input className="input" value={f.package_availed} onChange={e => set("package_availed", e.target.value)} /></div>
-      <div><label className="label">Total Sessions</label>
-        <input type="number" className="input" value={f.total_sessions} onChange={e => set("total_sessions", e.target.value)} /></div>
-      <div><label className="label">Remaining Sessions</label>
-        <input type="number" className="input" value={f.remaining_sessions} onChange={e => set("remaining_sessions", e.target.value)} /></div>
-      <div><label className="label">Valid Until</label>
-        <input type="date" className="input" value={f.valid_until ?? ""} onChange={e => set("valid_until", e.target.value)} /></div>
-      <div><label className="label">Balance</label>
-        <input type="number" step="0.01" className="input" value={f.balance} onChange={e => set("balance", e.target.value)} /></div>
-      <div><label className="label">Payment Status</label>
-        <select className="input" value={f.payment_status} onChange={e => set("payment_status", e.target.value)}>
-          <option>Paid</option><option>Partial</option><option>Unpaid</option>
-        </select></div>
-      <div><label className="label">Registration Date</label>
-        <input type="date" className="input" value={f.registration_date} onChange={e => set("registration_date", e.target.value)} /></div>
-      <div className="flex items-center gap-2 mt-6">
-        <input id="consent" type="checkbox" checked={!!f.signed_consent} onChange={e => set("signed_consent", e.target.checked)} />
-        <label htmlFor="consent" className="text-sm">Signed Consent Form</label>
-      </div>
-      <div className="md:col-span-2"><label className="label">Allergies</label>
-        <textarea className="input" rows={2} value={f.allergies} onChange={e => set("allergies", e.target.value)} /></div>
-      <div className="md:col-span-2"><label className="label">Notes</label>
-        <textarea className="input" rows={3} value={f.notes} onChange={e => set("notes", e.target.value)} /></div>
+    <form onSubmit={submit} className="space-y-6">
+      <Section title="Personal">
+        <div className="md:col-span-2">
+          <label className="label">Full Name *</label>
+          <input required className="input" value={f.full_name} onChange={e => set("full_name", e.target.value)} />
+        </div>
+        <div><label className="label">Mobile Number</label>
+          <input className="input" placeholder="+63..." value={f.mobile} onChange={e => set("mobile", e.target.value)} /></div>
+        <div><label className="label">Age</label>
+          <input type="number" min="0" className="input" value={f.age} onChange={e => set("age", e.target.value)} /></div>
+        <div><label className="label">Birthday</label>
+          <input type="date" className="input" value={f.birthday ?? ""} onChange={e => set("birthday", e.target.value)} /></div>
+        <div><label className="label">Registration Date</label>
+          <input type="date" className="input" value={f.registration_date} onChange={e => set("registration_date", e.target.value)} /></div>
+      </Section>
 
-      {err && <p className="md:col-span-2 text-sm text-red-700">{err}</p>}
-      <div className="md:col-span-2 flex justify-end gap-2">
+      <Section title="Treatment & Package">
+        <div><label className="label">Treatment Interested</label>
+          <input className="input" placeholder="e.g. Facial, Laser, Botox" value={f.treatment_interested} onChange={e => set("treatment_interested", e.target.value)} /></div>
+        <div><label className="label">Package Availed</label>
+          <input className="input" placeholder="e.g. Glow-Up 6-Session Bundle" value={f.package_availed} onChange={e => set("package_availed", e.target.value)} /></div>
+        <div><label className="label">Validity Date</label>
+          <input type="date" className="input" value={f.valid_until ?? ""} onChange={e => set("valid_until", e.target.value)} /></div>
+        <div><label className="label">Balance</label>
+          <input type="number" step="0.01" className="input" value={f.balance} onChange={e => set("balance", e.target.value)} /></div>
+        <div><label className="label">Payment Status</label>
+          <select className="input" value={f.payment_status} onChange={e => set("payment_status", e.target.value)}>
+            <option>Paid</option><option>Partial</option><option>Unpaid</option>
+          </select></div>
+        <p className="md:col-span-2 text-xs" style={{ color: "var(--color-muted)" }}>
+          Tip: sessions are tracked automatically when you add packages from the Packages module — no need to enter session counts here.
+        </p>
+      </Section>
+
+      <Section title="Health & Consent">
+        <div className="md:col-span-2"><label className="label">Allergies</label>
+          <textarea className="input" rows={2} placeholder="Known allergies or sensitivities" value={f.allergies} onChange={e => set("allergies", e.target.value)} /></div>
+        <div className="md:col-span-2"><label className="label">Notes</label>
+          <textarea className="input" rows={3} placeholder="Anything relevant to treatment or follow-ups" value={f.notes} onChange={e => set("notes", e.target.value)} /></div>
+        <div className="md:col-span-2 flex items-center gap-2 mt-1">
+          <input id="consent" type="checkbox" className="h-4 w-4" checked={!!f.signed_consent} onChange={e => set("signed_consent", e.target.checked)} />
+          <label htmlFor="consent" className="text-sm">Consent form signed</label>
+        </div>
+      </Section>
+
+      {err && <p className="text-sm text-red-700">{err}</p>}
+      <div className="flex justify-end gap-2">
         <button type="button" className="btn-ghost" onClick={() => router.back()}>Cancel</button>
         <button className="btn-primary" disabled={pending}>{pending ? "Saving..." : "Save Client"}</button>
       </div>
     </form>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h3 className="font-serif text-base mb-3" style={{ color: "var(--color-primary)" }}>{title}</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{children}</div>
+    </div>
   );
 }

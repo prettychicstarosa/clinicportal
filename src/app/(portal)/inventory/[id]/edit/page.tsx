@@ -12,7 +12,7 @@ export default async function EditInventory({ params }: { params: { id: string }
   return (
     <div>
       <PageHeader title={`Edit ${item.name}`} />
-      <div className="card max-w-xl"><InventoryForm mode="edit" initial={item} /></div>
+      <div className="card max-w-3xl"><InventoryForm mode="edit" initial={item} /></div>
     </div>
   );
 }

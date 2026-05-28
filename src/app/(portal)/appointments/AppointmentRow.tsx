@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/utils";
 
-const STATUSES = ["Scheduled","Done","No Show","Cancelled","Rescheduled"] as const;
+const STATUSES = ["Scheduled", "Done", "Cancelled", "No Show"] as const;
 
 export default function AppointmentRow({ appt, isAdmin }: { appt: any; isAdmin: boolean }) {
   const router = useRouter();
@@ -15,7 +15,8 @@ export default function AppointmentRow({ appt, isAdmin }: { appt: any; isAdmin: 
     start(async () => {
       const supabase = createSupabaseBrowserClient();
       const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from("appointments").update({ status, updated_by: user?.id }).eq("id", appt.id);
+      const { error } = await supabase.from("appointments")
+        .update({ status, updated_by: user?.id }).eq("id", appt.id);
       if (error) { alert(error.message); return; }
       await supabase.from("activity_logs").insert({
         actor_id: user?.id, action: `marked appointment ${status.toLowerCase()}`,
@@ -38,16 +39,37 @@ export default function AppointmentRow({ appt, isAdmin }: { appt: any; isAdmin: 
       router.refresh();
     });
   }
+
+  const badgeCls =
+    appt.status === "Done" ? "badge-green" :
+    appt.status === "Cancelled" ? "badge-red" :
+    appt.status === "No Show" ? "badge-amber" : "badge-blue";
+
   return (
     <tr>
       <td className="table-td">{formatDate(appt.date)}</td>
-      <td className="table-td">{appt.time?.slice(0,5)}</td>
-      <td className="table-td"><Link href={`/clients/${appt.client_id}`} className="underline">{appt.clients?.full_name}</Link></td>
-      <td className="table-td">{appt.treatment ?? "—"}</td>
+      <td className="table-td">{appt.time?.slice(0, 5)}</td>
       <td className="table-td">
-        <select disabled={pending} className="input !py-1 !text-xs" value={appt.status} onChange={e => changeStatus(e.target.value)}>
+        <Link href={`/clients/${appt.client_id}`} className="underline">
+          {appt.clients?.full_name}
+        </Link>
+      </td>
+      <td className="table-td">
+        {appt.treatment ?? appt.packages?.name ?? "—"}
+        {appt.packages?.name && appt.treatment && (
+          <div className="text-xs" style={{ color: "var(--color-muted)" }}>{appt.packages.name}</div>
+        )}
+      </td>
+      <td className="table-td">
+        <select
+          disabled={pending}
+          className={"input !py-1 !text-xs"}
+          value={appt.status}
+          onChange={e => changeStatus(e.target.value)}
+        >
           {STATUSES.map(s => <option key={s}>{s}</option>)}
         </select>
+        <span className={"hidden md:inline-block ml-2 badge " + badgeCls}>{appt.status}</span>
       </td>
       <td className="table-td max-w-[200px] truncate" title={appt.notes ?? ""}>{appt.notes ?? "—"}</td>
       <td className="table-td text-right">

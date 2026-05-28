@@ -4,25 +4,28 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatDateTime } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import InventoryRow from "./InventoryRow";
-import { getCurrentProfile } from "@/lib/auth";
+import { getCurrentProfile, isManager } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function InventoryPage() {
   const supabase = createSupabaseServerClient();
   const profile = await getCurrentProfile();
-  const [{ data: items }, { data: logs }] = await Promise.all([
-    supabase.from("inventory").select("*, profiles:updated_by(full_name)").order("name"),
+  const [{ data: items }, { data: logs }, { data: clients }] = await Promise.all([
+    supabase.from("inventory")
+      .select("*, profiles:updated_by(full_name)")
+      .order("name"),
     supabase.from("inventory_logs")
-      .select("*, inventory(name), profiles:performed_by(full_name)")
-      .order("created_at", { ascending: false }).limit(20)
+      .select("*, inventory(name), profiles:performed_by(full_name), clients(full_name)")
+      .order("created_at", { ascending: false }).limit(20),
+    supabase.from("clients").select("id, full_name").order("full_name")
   ]);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Meds & Kits Inventory"
-        subtitle="Track stock, consume items, and review activity"
+        title="Inventory"
+        subtitle="Medicines and kits — track stock by vial, box, or piece"
         action={<Link href="/inventory/new" className="btn-primary"><Plus size={16}/> Add Item</Link>}
       />
 
@@ -31,17 +34,21 @@ export default async function InventoryPage() {
           <table className="w-full">
             <thead className="bg-beige-100">
               <tr>
-                <th className="table-th">Name</th><th className="table-th">Type</th>
-                <th className="table-th">Unit</th><th className="table-th">Stock</th>
-                <th className="table-th">Alert at</th><th className="table-th">Status</th>
-                <th className="table-th">Last Updated</th><th className="table-th"></th>
+                <th className="table-th">Name</th>
+                <th className="table-th">Type</th>
+                <th className="table-th">Stock</th>
+                <th className="table-th">Container</th>
+                <th className="table-th">Alert at</th>
+                <th className="table-th">Status</th>
+                <th className="table-th">Last Updated</th>
+                <th className="table-th"></th>
               </tr>
             </thead>
             <tbody>
               {(items ?? []).map((it: any) => (
-                <InventoryRow key={it.id} item={it} isAdmin={profile.role === "admin"} />
+                <InventoryRow key={it.id} item={it} isAdmin={isManager(profile.role)} clients={clients ?? []} />
               ))}
-              {(!items || items.length===0) && (
+              {(!items || items.length === 0) && (
                 <tr><td colSpan={8} className="table-td text-center" style={{ color: "var(--color-muted)" }}>No inventory items yet.</td></tr>
               )}
             </tbody>
@@ -56,13 +63,23 @@ export default async function InventoryPage() {
         ) : (
           <ul className="divide-y" style={{ borderColor: "var(--color-border)" }}>
             {logs!.map((l: any) => (
-              <li key={l.id} className="py-3 flex justify-between text-sm">
-                <span>
-                  <b>{l.profiles?.full_name ?? "Someone"}</b>{" "}
-                  {l.action === "consume" ? "consumed" : l.action === "add" ? "added" : l.action}{" "}
-                  {l.quantity} of {l.inventory?.name ?? "item"}
-                </span>
-                <span className="text-xs" style={{ color: "var(--color-muted)" }}>{formatDateTime(l.created_at)}</span>
+              <li key={l.id} className="py-3 flex justify-between items-start gap-4 text-sm">
+                <div>
+                  <div>
+                    <b>{l.profiles?.full_name ?? "Someone"}</b>{" "}
+                    {l.action === "consume" ? "consumed" : l.action === "add" ? "added" : l.action}{" "}
+                    {l.quantity} {l.unit ?? ""} of {l.inventory?.name ?? "item"}
+                  </div>
+                  {l.clients?.full_name && (
+                    <div className="text-xs" style={{ color: "var(--color-muted)" }}>
+                      for {l.clients.full_name}{l.note ? ` · ${l.note}` : ""}
+                    </div>
+                  )}
+                  {!l.clients?.full_name && l.note && (
+                    <div className="text-xs" style={{ color: "var(--color-muted)" }}>{l.note}</div>
+                  )}
+                </div>
+                <span className="text-xs whitespace-nowrap" style={{ color: "var(--color-muted)" }}>{formatDateTime(l.created_at)}</span>
               </li>
             ))}
           </ul>

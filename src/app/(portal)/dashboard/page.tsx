@@ -17,23 +17,23 @@ export default async function DashboardPage() {
   const monthStart = startOfMonthISO();
 
   const [
-    totalClients, todayAppts, totalSessions,
+    totalClients, todayAppts, activePackages,
     monthExpenses, receivable, lowStock,
     monthRevenue, recent
   ] = await Promise.all([
     supabase.from("clients").select("*", { count: "exact", head: true }),
     supabase.from("appointments").select("*", { count: "exact", head: true }).eq("date", today),
-    supabase.from("sessions").select("*", { count: "exact", head: true }),
+    supabase.from("packages").select("*", { count: "exact", head: true }).eq("status", "Active"),
     supabase.from("expenses").select("amount").gte("created_at", monthStart),
     supabase.from("clients").select("balance"),
-    supabase.from("inventory").select("*", { count: "exact", head: true }).in("stock_status", ["Low Stock","Out of Stock"]),
+    supabase.from("inventory").select("*", { count: "exact", head: true }).in("stock_status", ["Low Stock", "Out of Stock"]),
     supabase.from("payments").select("amount").gte("created_at", monthStart),
     supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(10)
   ]);
 
-  const expensesSum  = (monthExpenses.data ?? []).reduce((a, b) => a + Number(b.amount || 0), 0);
+  const expensesSum = (monthExpenses.data ?? []).reduce((a, b) => a + Number(b.amount || 0), 0);
   const receivableSum = (receivable.data ?? []).reduce((a, b) => a + Number(b.balance || 0), 0);
-  const revenueSum   = (monthRevenue.data ?? []).reduce((a, b) => a + Number(b.amount || 0), 0);
+  const revenueSum = (monthRevenue.data ?? []).reduce((a, b) => a + Number(b.amount || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -54,12 +54,12 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Clients"        value={totalClients.count ?? 0}            icon={Users} />
         <StatCard label="Today's Appointments" value={todayAppts.count ?? 0}              icon={CalendarDays} />
-        <StatCard label="Total Sessions"       value={totalSessions.count ?? 0}           icon={Sparkles} />
+        <StatCard label="Active Packages"      value={activePackages.count ?? 0}          icon={Sparkles} />
         <StatCard label="Low Stock Items"      value={lowStock.count ?? 0}                icon={Package} />
         <StatCard label="Monthly Expenses"     value={formatCurrency(expensesSum)}        icon={Receipt} />
         <StatCard label="Amount Receivable"    value={formatCurrency(receivableSum)}      icon={CreditCard} />
         <StatCard label="Monthly Revenue"      value={formatCurrency(revenueSum)}         icon={TrendingUp} />
-        <StatCard label="Net (Revenue - Exp.)" value={formatCurrency(revenueSum - expensesSum)} icon={TrendingUp} />
+        <StatCard label="Net (Revenue − Exp.)" value={formatCurrency(revenueSum - expensesSum)} icon={TrendingUp} />
       </div>
 
       <div className="card">

@@ -7,7 +7,7 @@ export function createSupabaseBrowserClient() {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) {
     throw new Error(
-      `Supabase env vars missing in client bundle (url: ${url ? "set" : "MISSING"}, anon key: ${key ? "set" : "MISSING"}). Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your Vercel project and redeploy.`
+      "Backend connection is not configured. Please contact your administrator."
     );
   }
   return createBrowserClient(url, key);

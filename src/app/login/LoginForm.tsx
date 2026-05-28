@@ -18,8 +18,10 @@ export default function LoginForm() {
       const supabase = createSupabaseBrowserClient();
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
-        const status = (error as { status?: number }).status;
-        setErr(status ? `${error.message} (status ${status})` : error.message);
+        const msg = /invalid login credentials/i.test(error.message)
+          ? "Incorrect email or password."
+          : error.message;
+        setErr(msg);
         setLoading(false);
         return;
       }
@@ -27,18 +29,14 @@ export default function LoginForm() {
       router.push(redirect);
       router.refresh();
     } catch (e: unknown) {
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const msg = e instanceof Error ? e.message : String(e);
       const isFetchFail = /failed to fetch|networkerror|load failed/i.test(msg);
       if (isFetchFail) {
-        setErr(
-          `Could not reach Supabase${url ? ` at ${url}` : ""}. Check that the project URL is correct and the project is not paused, and that NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY are set in Vercel. (Original error: ${msg})`
-        );
+        setErr("Could not reach the server. Please check your internet connection and try again.");
       } else {
-        setErr(msg);
+        setErr("Sign in failed. Please try again.");
       }
-      // Surface full detail to the browser console for debugging.
-      console.error("Login error", e, { supabaseUrl: url });
+      console.error("Login error", e);
       setLoading(false);
     }
   }

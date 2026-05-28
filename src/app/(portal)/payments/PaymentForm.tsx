@@ -65,7 +65,7 @@ export default function PaymentForm({ clients, initialClientId }: { clients: Cli
         <textarea className="input" rows={3} value={f.notes} onChange={e => set("notes", e.target.value)} /></div>
       <div className="md:col-span-2 flex items-center gap-2">
         <input id="bal" type="checkbox" checked={f.apply_to_balance} onChange={e => set("apply_to_balance", e.target.checked)} />
-        <label htmlFor="bal" className="text-sm">Subtract from client's outstanding balance</label>
+        <label htmlFor="bal" className="text-sm">Subtract from client&apos;s outstanding balance</label>
       </div>
       {err && <p className="md:col-span-2 text-sm text-red-700">{err}</p>}
       <div className="md:col-span-2 flex justify-end gap-2">

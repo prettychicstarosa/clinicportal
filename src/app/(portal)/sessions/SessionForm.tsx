@@ -96,7 +96,7 @@ export default function SessionForm({ clients, initialClientId }: { clients: Cli
 
       {selected && (
         <p className="md:col-span-2 text-xs" style={{ color: "var(--color-muted)" }}>
-          Marking <b>Completed</b> will deduct 1 from {selected.full_name}'s remaining sessions
+          Marking <b>Completed</b> will deduct 1 from {selected.full_name}&apos;s remaining sessions
           (currently {selected.remaining_sessions}).
         </p>
       )}

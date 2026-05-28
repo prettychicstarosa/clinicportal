@@ -14,12 +14,33 @@ export default function LoginForm() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true); setErr(null);
-    const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) { setErr(error.message); setLoading(false); return; }
-    const redirect = sp.get("redirect") || "/dashboard";
-    router.push(redirect);
-    router.refresh();
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        const status = (error as { status?: number }).status;
+        setErr(status ? `${error.message} (status ${status})` : error.message);
+        setLoading(false);
+        return;
+      }
+      const redirect = sp.get("redirect") || "/dashboard";
+      router.push(redirect);
+      router.refresh();
+    } catch (e: unknown) {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const msg = e instanceof Error ? e.message : String(e);
+      const isFetchFail = /failed to fetch|networkerror|load failed/i.test(msg);
+      if (isFetchFail) {
+        setErr(
+          `Could not reach Supabase${url ? ` at ${url}` : ""}. Check that the project URL is correct and the project is not paused, and that NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY are set in Vercel. (Original error: ${msg})`
+        );
+      } else {
+        setErr(msg);
+      }
+      // Surface full detail to the browser console for debugging.
+      console.error("Login error", e, { supabaseUrl: url });
+      setLoading(false);
+    }
   }
 
   return (

@@ -3,12 +3,18 @@ import { getSettings } from "@/lib/settings";
 import { getCurrentProfile, isManager } from "@/lib/auth";
 import { PageHeader } from "@/components/PageHeader";
 import { Logo } from "@/components/Logo";
+import { unstable_noStore as noStore } from "next/cache";
 import SettingsForm from "./SettingsForm";
 import EmployeeManager from "./EmployeeManager";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function SettingsPage() {
+  // Never serve a cached render of this page — the staff list must always
+  // reflect the latest profiles after a create/delete/disable.
+  noStore();
+
   const supabase = createSupabaseServerClient();
   const profile = await getCurrentProfile();
   const settings = await getSettings();
@@ -16,9 +22,21 @@ export default async function SettingsPage() {
   const isOwner = profile.role === "owner";
 
   // Only owners see staff management; admin/staff don't.
-  const { data: employees } = isOwner
-    ? await supabase.from("profiles").select("*").order("role").order("full_name")
-    : { data: null };
+  // Staff Accounts must show ONLY active, non-deleted profiles.
+  let employees: any[] | null = null;
+  if (isOwner) {
+    console.log("[StaffAccounts] loading staff list from table: public.profiles (is_active = true, order created_at desc)");
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false });
+    if (error) console.error("[StaffAccounts] profiles query failed:", error.message);
+    // Defensive: drop any soft-deleted row even if it somehow stayed active.
+    // (Safe when the deleted_at column isn't present yet — the field is undefined.)
+    employees = (data ?? []).filter((e: any) => !e.deleted_at);
+    console.log(`[StaffAccounts] returning ${employees.length} active profile(s)`);
+  }
 
   return (
     <div className="space-y-6">

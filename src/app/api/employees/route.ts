@@ -135,12 +135,42 @@ export async function POST(req: Request) {
       if (target?.role === "owner") {
         return NextResponse.json({ error: "Owner account cannot be deleted" }, { status: 400 });
       }
+
+      // 1. Delete the auth user if it still exists. A missing auth user is NOT
+      //    a failure — the account may have already been removed directly in
+      //    Supabase Auth. Treat "User not found" as success and keep going.
       const { error: delAuthErr } = await admin.auth.admin.deleteUser(user_id);
-      if (delAuthErr) return NextResponse.json({ error: delAuthErr.message }, { status: 400 });
-      // Explicitly remove the profile row so the staff list never shows a
-      // deleted account, even if the auth cascade does not fire.
-      const { error: delProfileErr } = await admin.from("profiles").delete().eq("id", user_id);
-      if (delProfileErr) return NextResponse.json({ error: delProfileErr.message }, { status: 400 });
+      if (delAuthErr) {
+        const alreadyGone =
+          (delAuthErr as any).status === 404 || /not\s*found/i.test(delAuthErr.message ?? "");
+        if (alreadyGone) {
+          console.log(`[employees:delete] auth user ${user_id} already gone — continuing`);
+        } else {
+          // Non-fatal: still soft-delete the profile so it leaves the list.
+          console.warn(`[employees:delete] auth delete error for ${user_id}: ${delAuthErr.message}`);
+        }
+      }
+
+      // 2. Soft-delete the profile. We deactivate instead of hard-deleting the
+      //    row because the profile may be referenced as created_by / actor_id
+      //    elsewhere (RESTRICT foreign keys), which would block a hard delete
+      //    and leave the "deleted" staff member visible.
+      const { error: deactErr } = await admin
+        .from("profiles")
+        .update({ is_active: false })
+        .eq("id", user_id);
+      if (deactErr) return NextResponse.json({ error: deactErr.message }, { status: 400 });
+
+      // Best-effort deleted_at stamp; ignored if the column isn't present yet
+      // (run migration 0007_soft_delete_profiles.sql to add it).
+      const { error: stampErr } = await admin
+        .from("profiles")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", user_id);
+      if (stampErr) {
+        console.warn(`[employees:delete] could not set deleted_at for ${user_id}: ${stampErr.message}`);
+      }
+
       await logAdminAction("deleted staff account", undefined, user_id);
       return NextResponse.json({ ok: true });
     }

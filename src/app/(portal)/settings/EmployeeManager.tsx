@@ -1,5 +1,5 @@
 "use client";
-import { Fragment, useState, useTransition } from "react";
+import { Fragment, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/utils";
 import { PERMISSION_TABS, DEFAULT_PERMISSIONS } from "@/lib/permissions-shared";
@@ -31,6 +31,9 @@ export default function EmployeeManager({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  // Local copy of the list so a deleted account disappears immediately,
+  // before the server refresh completes.
+  const [list, setList] = useState<Employee[]>(employees);
   const [showNew, setShowNew] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -48,6 +51,11 @@ export default function EmployeeManager({
   });
 
   const isOwner = currentUserRole === "owner";
+
+  // Keep the local list in sync with fresh server data after router.refresh().
+  useEffect(() => {
+    setList(employees);
+  }, [employees]);
 
   async function call(action: string, body: any) {
     setErr(null); setOk(null);
@@ -116,11 +124,16 @@ export default function EmployeeManager({
     });
   }
   function remove(emp: Employee) {
-    if (emp.role === "owner") return;
-    if (!confirm(`Delete account ${displayUsername(emp.email)}? This cannot be undone.`)) return;
+    if (emp.role === "owner") return; // Owner accounts can never be deleted.
+    if (!confirm("Are you sure you want to permanently delete this staff account?")) return;
     start(async () => {
       const success = await call("delete", { user_id: emp.id });
-      if (success) router.refresh();
+      if (success) {
+        // Remove the profile from the list immediately, then refresh.
+        setList(prev => prev.filter(e => e.id !== emp.id));
+        setOk(`Staff account ${displayUsername(emp.email)} deleted`);
+        router.refresh();
+      }
     });
   }
 
@@ -240,7 +253,7 @@ export default function EmployeeManager({
               </tr>
             </thead>
             <tbody>
-              {employees.map(emp => {
+              {list.map(emp => {
                 const isOwnerRow = emp.role === "owner";
                 const isSelf = emp.id === currentUserId;
                 const isEditing = editingId === emp.id;
@@ -378,7 +391,7 @@ export default function EmployeeManager({
                   </Fragment>
                 );
               })}
-              {employees.length === 0 && (
+              {list.length === 0 && (
                 <tr><td colSpan={6} className="table-td text-center" style={{ color: "var(--color-muted)" }}>No staff accounts yet.</td></tr>
               )}
             </tbody>

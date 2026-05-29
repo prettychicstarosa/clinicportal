@@ -137,6 +137,10 @@ export async function POST(req: Request) {
       }
       const { error: delAuthErr } = await admin.auth.admin.deleteUser(user_id);
       if (delAuthErr) return NextResponse.json({ error: delAuthErr.message }, { status: 400 });
+      // Explicitly remove the profile row so the staff list never shows a
+      // deleted account, even if the auth cascade does not fire.
+      const { error: delProfileErr } = await admin.from("profiles").delete().eq("id", user_id);
+      if (delProfileErr) return NextResponse.json({ error: delProfileErr.message }, { status: 400 });
       await logAdminAction("deleted staff account", undefined, user_id);
       return NextResponse.json({ ok: true });
     }

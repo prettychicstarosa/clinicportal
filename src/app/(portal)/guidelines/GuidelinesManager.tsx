@@ -452,7 +452,7 @@ export default function GuidelinesManager({
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-4 max-w-full">
           <aside className="space-y-2">
             <div className="hidden lg:block">
               <CategoryList
@@ -904,36 +904,47 @@ function CategoryDetail({
       ) : (
         <>
           <div
-            className="hidden md:block overflow-x-auto rounded-xl border"
+            className="hidden md:block max-w-full overflow-x-auto rounded-xl border"
             style={{ borderColor: "var(--color-border)" }}
           >
-            <table className="w-full min-w-[1100px]">
+            <table className="w-full table-fixed text-xs">
+              <colgroup>
+                <col style={{ width: "13%" }} />
+                <col style={{ width: "11%" }} />
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "7%" }} />
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "18%" }} />
+                <col style={{ width: "18%" }} />
+                {canManage && <col style={{ width: "9%" }} />}
+              </colgroup>
               <thead className="bg-beige-100">
                 <tr>
-                  <th className="table-th">Service / Procedure</th>
-                  <th className="table-th">Medicine / Product</th>
-                  <th className="table-th">Syringe / Qty</th>
-                  <th className="table-th">Time</th>
-                  <th className="table-th">Intensity</th>
-                  <th className="table-th">Internal Cost</th>
-                  <th className="table-th">Procedure</th>
-                  <th className="table-th">Notes</th>
-                  {canManage && <th className="table-th text-right">Actions</th>}
+                  <th className="table-th !px-2 !py-2 !text-[11px]">Service / Procedure</th>
+                  <th className="table-th !px-2 !py-2 !text-[11px]">Medicine / Product</th>
+                  <th className="table-th !px-2 !py-2 !text-[11px]">Syringe / Qty</th>
+                  <th className="table-th !px-2 !py-2 !text-[11px]">Time</th>
+                  <th className="table-th !px-2 !py-2 !text-[11px]">Intensity</th>
+                  <th className="table-th !px-2 !py-2 !text-[11px]">Internal Cost</th>
+                  <th className="table-th !px-2 !py-2 !text-[11px]">Procedure</th>
+                  <th className="table-th !px-2 !py-2 !text-[11px]">Notes</th>
+                  {canManage && <th className="table-th !px-2 !py-2 !text-[11px] text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {items.map((it) => (
                   <tr key={it.id}>
-                    <td className="table-td font-medium whitespace-pre-line">{it.name}</td>
-                    <td className="table-td">{it.medicine_used ?? "—"}</td>
-                    <td className="table-td">{it.syringe_quantity ?? "—"}</td>
-                    <td className="table-td">{it.time ?? "—"}</td>
-                    <td className="table-td">{it.intensity ?? "—"}</td>
-                    <td className="table-td">{formatCurrency(it.internal_cost)}</td>
-                    <td className="table-td whitespace-pre-line max-w-xs">{it.procedure ?? "—"}</td>
-                    <td className="table-td whitespace-pre-line max-w-xs">{it.notes ?? "—"}</td>
+                    <td className="table-td !px-2 !py-2 !text-xs font-medium whitespace-pre-line break-words">{it.name}</td>
+                    <td className="table-td !px-2 !py-2 !text-xs break-words">{it.medicine_used ?? "—"}</td>
+                    <td className="table-td !px-2 !py-2 !text-xs break-words">{it.syringe_quantity ?? "—"}</td>
+                    <td className="table-td !px-2 !py-2 !text-xs break-words">{it.time ?? "—"}</td>
+                    <td className="table-td !px-2 !py-2 !text-xs break-words">{it.intensity ?? "—"}</td>
+                    <td className="table-td !px-2 !py-2 !text-xs whitespace-nowrap">{formatCurrency(it.internal_cost)}</td>
+                    <td className="table-td !px-2 !py-2 !text-xs whitespace-pre-line break-words">{it.procedure ?? "—"}</td>
+                    <td className="table-td !px-2 !py-2 !text-xs whitespace-pre-line break-words">{it.notes ?? "—"}</td>
                     {canManage && (
-                      <td className="table-td text-right">
+                      <td className="table-td !px-2 !py-2 !text-xs text-right">
                         <div className="flex gap-2 justify-end">
                           <button
                             type="button"

@@ -14,7 +14,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
   const view = searchParams.view ?? "list";
   const { data: appts } = await supabase
     .from("appointments")
-    .select("*, clients(full_name), packages(name)")
+    .select("*, clients(full_name, mobile), packages(name)")
     .order("date", { ascending: true })
     .order("time", { ascending: true })
     .limit(500);

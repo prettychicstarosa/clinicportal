@@ -10,7 +10,7 @@ type Props = {
   packages?: { id: string; name: string; client_id: string; total_sessions: number; used_sessions: number }[];
 };
 
-const STATUSES = ["Scheduled", "Done", "Cancelled", "No Show"];
+const STATUSES = ["Scheduled", "Pending", "Done", "No Show", "Cancelled"];
 
 export default function AppointmentForm({ mode, initial = {}, clients, packages = [] }: Props) {
   const router = useRouter();

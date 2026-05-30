@@ -16,9 +16,11 @@ export default async function ClientProfile({ params }: { params: { id: string }
 
   const [{ data: appts }, { data: packages }, { data: payments }, { data: logs }] = await Promise.all([
     supabase.from("appointments")
-      .select("*, packages(name)")
+      .select("*, packages(name), staff:created_by(full_name)")
       .eq("client_id", params.id)
-      .order("date", { ascending: false }).limit(50),
+      .order("date", { ascending: false })
+      .order("time", { ascending: false })
+      .limit(200),
     supabase.from("packages")
       .select("*")
       .eq("client_id", params.id)
@@ -129,37 +131,62 @@ export default async function ClientProfile({ params }: { params: { id: string }
         )}
       </Panel>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        <Panel title="Payment History">
-          {(payments ?? []).length === 0
-            ? <Empty />
-            : <ul className="space-y-2 text-sm">
-                {payments!.map((p:any) => (
-                  <li key={p.id} className="flex justify-between border-b py-2" style={{ borderColor: "var(--color-border)" }}>
-                    <div>
-                      <div>{formatDateTime(p.created_at)} · {p.method ?? "—"}</div>
-                      {p.profiles?.full_name && (
-                        <div className="text-xs" style={{ color: "var(--color-muted)" }}>by {p.profiles.full_name}</div>
-                      )}
-                    </div>
-                    <span className="font-medium">{formatCurrency(p.amount)}</span>
-                  </li>
-                ))}
-              </ul>}
-        </Panel>
-        <Panel title="Appointments">
-          {(appts ?? []).length === 0
-            ? <Empty />
-            : <ul className="space-y-2 text-sm">
-                {appts!.map((a:any) => (
-                  <li key={a.id} className="flex justify-between border-b py-2" style={{ borderColor: "var(--color-border)" }}>
-                    <span>{formatDate(a.date)} · {a.time?.slice(0,5)} — {a.treatment ?? a.packages?.name ?? "—"}</span>
-                    <span className="badge badge-gray">{a.status}</span>
-                  </li>
-                ))}
-              </ul>}
-        </Panel>
-      </div>
+      <Panel title="Payment History">
+        {(payments ?? []).length === 0
+          ? <Empty />
+          : <ul className="space-y-2 text-sm">
+              {payments!.map((p:any) => (
+                <li key={p.id} className="flex justify-between border-b py-2" style={{ borderColor: "var(--color-border)" }}>
+                  <div>
+                    <div>{formatDateTime(p.created_at)} · {p.method ?? "—"}</div>
+                    {p.profiles?.full_name && (
+                      <div className="text-xs" style={{ color: "var(--color-muted)" }}>by {p.profiles.full_name}</div>
+                    )}
+                  </div>
+                  <span className="font-medium">{formatCurrency(p.amount)}</span>
+                </li>
+              ))}
+            </ul>}
+      </Panel>
+
+      <Panel title="Appointment History">
+        {(appts ?? []).length === 0 ? (
+          <Empty />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-beige-100">
+                <tr>
+                  <th className="table-th">Date</th>
+                  <th className="table-th">Service</th>
+                  <th className="table-th">Staff</th>
+                  <th className="table-th">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {appts!.map((a: any) => {
+                  const badgeCls =
+                    a.status === "Done" ? "badge-green" :
+                    a.status === "Cancelled" ? "badge-red" :
+                    a.status === "No Show" ? "badge-amber" :
+                    a.status === "Pending" ? "badge-amber" : "badge-blue";
+                  return (
+                    <tr key={a.id}>
+                      <td className="table-td whitespace-nowrap">
+                        {formatDate(a.date)}
+                        <span style={{ color: "var(--color-muted)" }}> · {a.time?.slice(0, 5)}</span>
+                      </td>
+                      <td className="table-td">{a.treatment ?? a.packages?.name ?? "—"}</td>
+                      <td className="table-td">{a.staff?.full_name ?? <span style={{ color: "var(--color-muted)" }}>—</span>}</td>
+                      <td className="table-td"><span className={"badge " + badgeCls}>{a.status}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
 
       <Panel title="History">
         {(logs ?? []).length === 0

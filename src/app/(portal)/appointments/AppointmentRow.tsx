@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/utils";
 
-const STATUSES = ["Scheduled", "Done", "Cancelled", "No Show"] as const;
+const STATUSES = ["Scheduled", "Pending", "Done", "No Show", "Cancelled"] as const;
 
 export default function AppointmentRow({ appt, isAdmin }: { appt: any; isAdmin: boolean }) {
   const router = useRouter();
@@ -43,7 +43,8 @@ export default function AppointmentRow({ appt, isAdmin }: { appt: any; isAdmin: 
   const badgeCls =
     appt.status === "Done" ? "badge-green" :
     appt.status === "Cancelled" ? "badge-red" :
-    appt.status === "No Show" ? "badge-amber" : "badge-blue";
+    appt.status === "No Show" ? "badge-amber" :
+    appt.status === "Pending" ? "badge-amber" : "badge-blue";
 
   return (
     <tr>

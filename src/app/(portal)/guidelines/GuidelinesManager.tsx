@@ -452,7 +452,7 @@ export default function GuidelinesManager({
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[170px_1fr] gap-4 max-w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-[150px_1fr] gap-4 max-w-full">
           <aside className="space-y-2 min-w-0">
             <div className="hidden lg:block">
               <CategoryList
@@ -909,26 +909,20 @@ function CategoryDetail({
           >
             <table className="w-full table-fixed text-xs">
               <colgroup>
+                <col style={{ width: "18%" }} />
+                <col style={{ width: "16%" }} />
                 <col style={{ width: "13%" }} />
                 <col style={{ width: "11%" }} />
-                <col style={{ width: "8%" }} />
-                <col style={{ width: "7%" }} />
-                <col style={{ width: "8%" }} />
-                <col style={{ width: "8%" }} />
-                <col style={{ width: "18%" }} />
-                <col style={{ width: "18%" }} />
-                {canManage && <col style={{ width: "9%" }} />}
+                <col style={{ width: "32%" }} />
+                {canManage && <col style={{ width: "10%" }} />}
               </colgroup>
               <thead className="bg-beige-100">
                 <tr>
                   <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Service / Procedure</th>
                   <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Medicine / Product</th>
                   <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Syringe / Qty</th>
-                  <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Time</th>
-                  <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Intensity</th>
                   <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Internal Cost</th>
                   <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Procedure</th>
-                  <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Notes</th>
                   {canManage && <th className="table-th !px-1.5 !py-1.5 !text-[10px] text-right">Actions</th>}
                 </tr>
               </thead>
@@ -938,11 +932,8 @@ function CategoryDetail({
                     <td className="table-td !px-1.5 !py-1.5 !text-[11px] font-medium whitespace-pre-line break-words">{it.name}</td>
                     <td className="table-td !px-1.5 !py-1.5 !text-[11px] break-words">{it.medicine_used ?? "—"}</td>
                     <td className="table-td !px-1.5 !py-1.5 !text-[11px] break-words">{it.syringe_quantity ?? "—"}</td>
-                    <td className="table-td !px-1.5 !py-1.5 !text-[11px] break-words">{it.time ?? "—"}</td>
-                    <td className="table-td !px-1.5 !py-1.5 !text-[11px] break-words">{it.intensity ?? "—"}</td>
                     <td className="table-td !px-1.5 !py-1.5 !text-[11px] whitespace-nowrap">{formatCurrency(it.internal_cost)}</td>
                     <td className="table-td !px-1.5 !py-1.5 !text-[11px] whitespace-pre-line break-words">{it.procedure ?? "—"}</td>
-                    <td className="table-td !px-1.5 !py-1.5 !text-[11px] whitespace-pre-line break-words">{it.notes ?? "—"}</td>
                     {canManage && (
                       <td className="table-td !px-1.5 !py-1.5 !text-[11px] text-right">
                         <div className="flex gap-2 justify-end">

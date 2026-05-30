@@ -47,7 +47,7 @@ export default function GuidelinesViewer({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[170px_1fr] gap-4 max-w-full">
+    <div className="grid grid-cols-1 lg:grid-cols-[150px_1fr] gap-4 max-w-full">
       <aside className="space-y-2 min-w-0">
         <div className="hidden lg:block">
           <ul className="space-y-2">
@@ -133,25 +133,19 @@ export default function GuidelinesViewer({
                 <div className="hidden md:block max-w-full overflow-x-auto rounded-xl border" style={{ borderColor: "var(--color-border)" }}>
                   <table className="w-full table-fixed text-xs">
                     <colgroup>
+                      <col style={{ width: "20%" }} />
+                      <col style={{ width: "18%" }} />
                       <col style={{ width: "14%" }} />
                       <col style={{ width: "12%" }} />
-                      <col style={{ width: "8%" }} />
-                      <col style={{ width: "7%" }} />
-                      <col style={{ width: "8%" }} />
-                      <col style={{ width: "9%" }} />
-                      <col style={{ width: "21%" }} />
-                      <col style={{ width: "21%" }} />
+                      <col style={{ width: "36%" }} />
                     </colgroup>
                     <thead className="bg-beige-100">
                       <tr>
                         <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Service / Procedure</th>
                         <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Medicine / Product</th>
                         <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Syringe / Qty</th>
-                        <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Time</th>
-                        <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Intensity</th>
                         <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Internal Cost</th>
                         <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Procedure</th>
-                        <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Notes</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -160,11 +154,8 @@ export default function GuidelinesViewer({
                           <td className="table-td !px-1.5 !py-1.5 !text-[11px] font-medium whitespace-pre-line break-words">{it.name}</td>
                           <td className="table-td !px-1.5 !py-1.5 !text-[11px] break-words">{it.medicine_used ?? "—"}</td>
                           <td className="table-td !px-1.5 !py-1.5 !text-[11px] break-words">{it.syringe_quantity ?? "—"}</td>
-                          <td className="table-td !px-1.5 !py-1.5 !text-[11px] break-words">{it.time ?? "—"}</td>
-                          <td className="table-td !px-1.5 !py-1.5 !text-[11px] break-words">{it.intensity ?? "—"}</td>
                           <td className="table-td !px-1.5 !py-1.5 !text-[11px] whitespace-nowrap">{formatCurrency(it.internal_cost)}</td>
                           <td className="table-td !px-1.5 !py-1.5 !text-[11px] whitespace-pre-line break-words">{it.procedure ?? "—"}</td>
-                          <td className="table-td !px-1.5 !py-1.5 !text-[11px] whitespace-pre-line break-words">{it.notes ?? "—"}</td>
                         </tr>
                       ))}
                     </tbody>

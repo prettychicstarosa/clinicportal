@@ -19,7 +19,7 @@ export default function ClientForm({ mode, initial = {} }: Props) {
     signed_consent: initial.signed_consent ?? false,
     notes: initial.notes ?? "",
     allergies: initial.allergies ?? "",
-    emergency_contact: initial.emergency_contact ?? ""
+    facebook: (initial as any).facebook ?? initial.emergency_contact ?? ""
   });
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
 
@@ -29,7 +29,10 @@ export default function ClientForm({ mode, initial = {} }: Props) {
     start(async () => {
       const supabase = createSupabaseBrowserClient();
       const { data: { user } } = await supabase.auth.getUser();
-      const payload: any = {
+      // Base fields, plus the facebook value written to BOTH `facebook` (new
+      // canonical column) and `emergency_contact` (legacy backup) so no data is
+      // lost regardless of which columns exist on the DB.
+      const base: any = {
         full_name: f.full_name,
         mobile: f.mobile,
         age: f.age === "" ? null : Number(f.age),
@@ -38,22 +41,38 @@ export default function ClientForm({ mode, initial = {} }: Props) {
         signed_consent: !!f.signed_consent,
         notes: f.notes,
         allergies: f.allergies,
-        emergency_contact: f.emergency_contact,
+        emergency_contact: f.facebook,
         updated_by: user?.id ?? null
       };
+      const payload: any = { ...base, facebook: f.facebook };
+
+      // The `facebook` column may not exist yet (migration 0011 not applied). If
+      // a write fails because of it, retry once without `facebook` so the client
+      // still saves (the value is preserved in emergency_contact).
+      const isMissingFacebook = (e: any) =>
+        !!e && (e.code === "PGRST204" || e.code === "42703" ||
+          (typeof e.message === "string" && e.message.toLowerCase().includes("facebook")));
+
       if (mode === "create") {
+        base.created_by = user?.id ?? null;
         payload.created_by = user?.id ?? null;
-        const { data, error } = await supabase.from("clients").insert(payload).select("id").single();
-        if (error) { setErr(error.message); return; }
+        let res = await supabase.from("clients").insert(payload).select("id").single();
+        if (res.error && isMissingFacebook(res.error)) {
+          res = await supabase.from("clients").insert(base).select("id").single();
+        }
+        if (res.error) { setErr(res.error.message); return; }
         await supabase.from("activity_logs").insert({
           actor_id: user?.id, action: "added new client " + f.full_name,
-          entity: "client", entity_id: data!.id
+          entity: "client", entity_id: res.data!.id
         });
-        router.push(`/clients/${data!.id}`);
+        router.push(`/clients/${res.data!.id}`);
       } else {
         const id = (initial as Client).id;
-        const { error } = await supabase.from("clients").update(payload).eq("id", id);
-        if (error) { setErr(error.message); return; }
+        let res = await supabase.from("clients").update(payload).eq("id", id);
+        if (res.error && isMissingFacebook(res.error)) {
+          res = await supabase.from("clients").update(base).eq("id", id);
+        }
+        if (res.error) { setErr(res.error.message); return; }
         await supabase.from("activity_logs").insert({
           actor_id: user?.id, action: "edited client " + f.full_name,
           entity: "client", entity_id: id
@@ -79,8 +98,8 @@ export default function ClientForm({ mode, initial = {} }: Props) {
           <input type="date" className="input" value={f.birthday ?? ""} onChange={e => set("birthday", e.target.value)} /></div>
         <div><label className="label">Registration Date</label>
           <input type="date" className="input" value={f.registration_date} onChange={e => set("registration_date", e.target.value)} /></div>
-        <div className="md:col-span-2"><label className="label">Emergency Contact</label>
-          <input className="input" placeholder="Name and number" value={f.emergency_contact} onChange={e => set("emergency_contact", e.target.value)} /></div>
+        <div className="md:col-span-2"><label className="label">Facebook Profile</label>
+          <input className="input" placeholder="FB: Dez Casino" value={f.facebook} onChange={e => set("facebook", e.target.value)} /></div>
         <p className="md:col-span-2 text-xs" style={{ color: "var(--color-muted)" }}>
           Packages, payments, and sessions are managed from the Packages module — no need to enter them here.
         </p>

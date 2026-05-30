@@ -6,34 +6,7 @@ import { Search, Check, X } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/utils";
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-// Parse a YYYY-MM-DD (or ISO) date string into [y, m, d] without timezone shifts.
-function ymd(dateStr?: string | null): [number, number, number] | null {
-  if (!dateStr) return null;
-  const [y, m, d] = dateStr.split("T")[0].split("-").map(Number);
-  if (!y || !m || !d) return null;
-  return [y, m, d];
-}
-
-function ageFromBirthday(birthday?: string | null): string {
-  const parts = ymd(birthday);
-  if (!parts) return "-";
-  const [y, m, d] = parts;
-  const now = new Date();
-  let age = now.getFullYear() - y;
-  const mo = now.getMonth() + 1;
-  const day = now.getDate();
-  if (mo < m || (mo === m && day < d)) age--;
-  return age >= 0 && age < 150 ? String(age) : "-";
-}
-
-function formatBirthday(birthday?: string | null): string {
-  const parts = ymd(birthday);
-  if (!parts) return "-";
-  const [y, m, d] = parts;
-  return `${MONTHS[m - 1]} ${String(d).padStart(2, "0")}, ${y}`;
-}
+const fbValue = (c: any): string | null => c.facebook ?? c.emergency_contact ?? null;
 
 const FILTERS = [
   { key: "all", label: "All Clients" },
@@ -57,7 +30,8 @@ export default function ClientsTable({ clients }: { clients: any[] }) {
       if (!q) return true;
       const name = (c.full_name ?? "").toLowerCase();
       const mobile = (c.mobile ?? "").toLowerCase();
-      return name.includes(q) || mobile.includes(q);
+      const facebook = (fbValue(c) ?? "").toLowerCase();
+      return name.includes(q) || mobile.includes(q) || facebook.includes(q);
     });
   }, [clients, query, filter]);
 
@@ -89,7 +63,7 @@ export default function ClientsTable({ clients }: { clients: any[] }) {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--color-muted)" }} />
           <input
             className="input !pl-9"
-            placeholder="Search by client name or mobile number..."
+            placeholder="Search by client name, mobile number, or Facebook..."
             value={query}
             onChange={e => setQuery(e.target.value)}
           />
@@ -118,8 +92,7 @@ export default function ClientsTable({ clients }: { clients: any[] }) {
               <tr>
                 <th className="table-th">Name</th>
                 <th className="table-th">Mobile</th>
-                <th className="table-th">Age</th>
-                <th className="table-th">Birthday</th>
+                <th className="table-th">Facebook</th>
                 <th className="table-th">Consent Form</th>
                 <th className="table-th">Registered</th>
                 <th className="table-th"></th>
@@ -132,8 +105,7 @@ export default function ClientsTable({ clients }: { clients: any[] }) {
                     <Link href={`/clients/${c.id}`} className="hover:underline">{c.full_name}</Link>
                   </td>
                   <td className="table-td">{c.mobile ?? "—"}</td>
-                  <td className="table-td">{ageFromBirthday(c.birthday)}</td>
-                  <td className="table-td">{formatBirthday(c.birthday)}</td>
+                  <td className="table-td">{fbValue(c) ?? "—"}</td>
                   <td className="table-td">
                     <button
                       type="button"
@@ -155,7 +127,7 @@ export default function ClientsTable({ clients }: { clients: any[] }) {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={7} className="table-td text-center" style={{ color: "var(--color-muted)" }}>
+                <tr><td colSpan={6} className="table-td text-center" style={{ color: "var(--color-muted)" }}>
                   {clients.length === 0 ? "No clients yet." : "No clients match your search."}
                 </td></tr>
               )}

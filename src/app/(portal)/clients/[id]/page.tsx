@@ -81,7 +81,7 @@ export default async function ClientProfile({ params }: { params: { id: string }
             <Info label="Mobile" value={client.mobile} />
             <Info label="Age" value={client.age} />
             <Info label="Birthday" value={formatDate(client.birthday)} />
-            <Info label="Emergency Contact" value={client.emergency_contact} />
+            <Info label="Facebook" value={client.facebook ?? client.emergency_contact} />
             <Info label="Consent Signed" value={client.signed_consent ? "Yes" : "No"} />
           </dl>
           {client.allergies && (

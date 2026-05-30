@@ -36,6 +36,8 @@ export type Client = {
   signed_consent: boolean;
   notes: string | null;
   allergies: string | null;
+  facebook: string | null;
+  /** @deprecated kept for backward-compat; superseded by `facebook` */
   emergency_contact: string | null;
   created_by: string | null;
   updated_by: string | null;

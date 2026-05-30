@@ -10,6 +10,14 @@ alter table public.appointments
 
 create index if not exists appointments_staff_idx on public.appointments(staff_id);
 
+-- Backfill: assign existing appointments to whoever booked them (created_by),
+-- but only when that profile still exists. Leaves staff_id null otherwise.
+update public.appointments a
+  set staff_id = a.created_by
+  where a.staff_id is null
+    and a.created_by is not null
+    and exists (select 1 from public.profiles p where p.id = a.created_by);
+
 -- Refresh PostgREST schema cache.
 notify pgrst, 'reload schema';
 

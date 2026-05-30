@@ -47,8 +47,8 @@ export default function GuidelinesViewer({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-4 max-w-full">
-      <aside className="space-y-2">
+    <div className="grid grid-cols-1 lg:grid-cols-[170px_1fr] gap-4 max-w-full">
+      <aside className="space-y-2 min-w-0">
         <div className="hidden lg:block">
           <ul className="space-y-2">
             {categories.map((c) => {
@@ -107,7 +107,7 @@ export default function GuidelinesViewer({
         </div>
       </aside>
 
-      <section>
+      <section className="min-w-0">
         {selectedCat ? (
           <div className="card">
             <div className="mb-4">
@@ -144,27 +144,27 @@ export default function GuidelinesViewer({
                     </colgroup>
                     <thead className="bg-beige-100">
                       <tr>
-                        <th className="table-th !px-2 !py-2 !text-[11px]">Service / Procedure</th>
-                        <th className="table-th !px-2 !py-2 !text-[11px]">Medicine / Product</th>
-                        <th className="table-th !px-2 !py-2 !text-[11px]">Syringe / Qty</th>
-                        <th className="table-th !px-2 !py-2 !text-[11px]">Time</th>
-                        <th className="table-th !px-2 !py-2 !text-[11px]">Intensity</th>
-                        <th className="table-th !px-2 !py-2 !text-[11px]">Internal Cost</th>
-                        <th className="table-th !px-2 !py-2 !text-[11px]">Procedure</th>
-                        <th className="table-th !px-2 !py-2 !text-[11px]">Notes</th>
+                        <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Service / Procedure</th>
+                        <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Medicine / Product</th>
+                        <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Syringe / Qty</th>
+                        <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Time</th>
+                        <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Intensity</th>
+                        <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Internal Cost</th>
+                        <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Procedure</th>
+                        <th className="table-th !px-1.5 !py-1.5 !text-[10px]">Notes</th>
                       </tr>
                     </thead>
                     <tbody>
                       {catItems.map((it) => (
                         <tr key={it.id}>
-                          <td className="table-td !px-2 !py-2 !text-xs font-medium whitespace-pre-line break-words">{it.name}</td>
-                          <td className="table-td !px-2 !py-2 !text-xs break-words">{it.medicine_used ?? "—"}</td>
-                          <td className="table-td !px-2 !py-2 !text-xs break-words">{it.syringe_quantity ?? "—"}</td>
-                          <td className="table-td !px-2 !py-2 !text-xs break-words">{it.time ?? "—"}</td>
-                          <td className="table-td !px-2 !py-2 !text-xs break-words">{it.intensity ?? "—"}</td>
-                          <td className="table-td !px-2 !py-2 !text-xs whitespace-nowrap">{formatCurrency(it.internal_cost)}</td>
-                          <td className="table-td !px-2 !py-2 !text-xs whitespace-pre-line break-words">{it.procedure ?? "—"}</td>
-                          <td className="table-td !px-2 !py-2 !text-xs whitespace-pre-line break-words">{it.notes ?? "—"}</td>
+                          <td className="table-td !px-1.5 !py-1.5 !text-[11px] font-medium whitespace-pre-line break-words">{it.name}</td>
+                          <td className="table-td !px-1.5 !py-1.5 !text-[11px] break-words">{it.medicine_used ?? "—"}</td>
+                          <td className="table-td !px-1.5 !py-1.5 !text-[11px] break-words">{it.syringe_quantity ?? "—"}</td>
+                          <td className="table-td !px-1.5 !py-1.5 !text-[11px] break-words">{it.time ?? "—"}</td>
+                          <td className="table-td !px-1.5 !py-1.5 !text-[11px] break-words">{it.intensity ?? "—"}</td>
+                          <td className="table-td !px-1.5 !py-1.5 !text-[11px] whitespace-nowrap">{formatCurrency(it.internal_cost)}</td>
+                          <td className="table-td !px-1.5 !py-1.5 !text-[11px] whitespace-pre-line break-words">{it.procedure ?? "—"}</td>
+                          <td className="table-td !px-1.5 !py-1.5 !text-[11px] whitespace-pre-line break-words">{it.notes ?? "—"}</td>
                         </tr>
                       ))}
                     </tbody>

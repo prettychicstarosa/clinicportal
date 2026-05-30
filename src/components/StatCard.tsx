@@ -1,10 +1,11 @@
 import type { LucideIcon } from "lucide-react";
+import Link from "next/link";
 
 export function StatCard({
-  label, value, icon: Icon, accent
-}: { label: string; value: string | number; icon?: LucideIcon; accent?: string }) {
-  return (
-    <div className="card flex items-start justify-between">
+  label, value, icon: Icon, accent, href
+}: { label: string; value: string | number; icon?: LucideIcon; accent?: string; href?: string }) {
+  const inner = (
+    <>
       <div>
         <div className="text-xs uppercase tracking-wide" style={{ color: "var(--color-muted)" }}>
           {label}
@@ -19,6 +20,15 @@ export function StatCard({
           <Icon size={20} />
         </div>
       )}
-    </div>
+    </>
   );
+
+  if (href) {
+    return (
+      <Link href={href} className="card flex items-start justify-between transition hover:shadow-md hover:-translate-y-0.5">
+        {inner}
+      </Link>
+    );
+  }
+  return <div className="card flex items-start justify-between">{inner}</div>;
 }

@@ -8,7 +8,7 @@ import { getCurrentProfile, isManager } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function AppointmentsPage({ searchParams }: { searchParams: { view?: string } }) {
+export default async function AppointmentsPage({ searchParams }: { searchParams: { view?: string; status?: string; filter?: string } }) {
   const supabase = createSupabaseServerClient();
   const profile = await getCurrentProfile();
   const view = searchParams.view ?? "list";
@@ -63,7 +63,12 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
           {groups.size === 0 && <p className="text-sm" style={{ color: "var(--color-muted)" }}>No appointments yet.</p>}
         </div>
       ) : (
-        <AppointmentsList appts={appts ?? []} isAdmin={isManager(profile.role)} />
+        <AppointmentsList
+          appts={appts ?? []}
+          isAdmin={isManager(profile.role)}
+          initialStatus={searchParams.status ?? ""}
+          initialFilter={searchParams.filter ?? "All"}
+        />
       )}
     </div>
   );

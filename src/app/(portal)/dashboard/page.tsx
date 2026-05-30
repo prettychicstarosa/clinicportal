@@ -79,11 +79,11 @@ export default async function DashboardPage() {
       <div>
         <h2 className="font-serif text-lg mb-3" style={{ color: "var(--color-primary)" }}>Appointments at a glance</h2>
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          <StatCard label="Today's Appointments"   value={todayAppts.count ?? 0}     icon={CalendarDays} />
-          <StatCard label="This Week Appointments" value={weekAppts.count ?? 0}      icon={CalendarRange} />
-          <StatCard label="Pending Appointments"   value={pendingAppts.count ?? 0}   icon={CalendarClock} />
-          <StatCard label="No Show Count"          value={noShowAppts.count ?? 0}    icon={UserX} />
-          <StatCard label="Completed Sessions Today" value={completedToday.count ?? 0} icon={CheckCircle2} />
+          <StatCard label="Today's Appointments"   value={todayAppts.count ?? 0}     icon={CalendarDays}   href="/appointments?filter=Today" />
+          <StatCard label="This Week Appointments" value={weekAppts.count ?? 0}      icon={CalendarRange}  href={`/appointments?filter=${encodeURIComponent("This Week")}`} />
+          <StatCard label="Pending Appointments"   value={pendingAppts.count ?? 0}   icon={CalendarClock}  href="/appointments?status=Pending" />
+          <StatCard label="No Show Count"          value={noShowAppts.count ?? 0}    icon={UserX}          href={`/appointments?status=${encodeURIComponent("No Show")}`} />
+          <StatCard label="Completed Sessions Today" value={completedToday.count ?? 0} icon={CheckCircle2} href={`/appointments?status=Done&filter=Today`} />
         </div>
       </div>
 

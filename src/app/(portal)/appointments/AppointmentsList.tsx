@@ -46,9 +46,24 @@ function inRange(dateStr: string, filter: DateFilter): boolean {
   return true;
 }
 
-export default function AppointmentsList({ appts, isAdmin }: { appts: any[]; isAdmin: boolean }) {
+export default function AppointmentsList({
+  appts,
+  isAdmin,
+  initialStatus = "",
+  initialFilter = "All"
+}: {
+  appts: any[];
+  isAdmin: boolean;
+  initialStatus?: string;
+  initialFilter?: string;
+}) {
   const [query, setQuery] = useState("");
-  const [dateFilter, setDateFilter] = useState<DateFilter>("All");
+  const validFilter = (DATE_FILTERS as readonly string[]).includes(initialFilter)
+    ? (initialFilter as DateFilter)
+    : "All";
+  const validStatus = (STATUS_ORDER as readonly string[]).includes(initialStatus) ? initialStatus : "";
+  const [dateFilter, setDateFilter] = useState<DateFilter>(validFilter);
+  const [statusFilter, setStatusFilter] = useState<string>(validStatus);
 
   // Distinct client names for the datalist (typeahead suggestions).
   const clientNames = useMemo(() => {
@@ -79,8 +94,10 @@ export default function AppointmentsList({ appts, isAdmin }: { appts: any[]; isA
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(a);
     }
-    return STATUS_ORDER.map(status => ({ status, items: map.get(status) ?? [] }));
-  }, [filtered]);
+    return STATUS_ORDER
+      .filter(status => !statusFilter || status === statusFilter)
+      .map(status => ({ status, items: map.get(status) ?? [] }));
+  }, [filtered, statusFilter]);
 
   return (
     <div className="space-y-6">
@@ -119,6 +136,21 @@ export default function AppointmentsList({ appts, isAdmin }: { appts: any[]; isA
             {query.trim() && <> for &ldquo;{query.trim()}&rdquo;</>}
           </span>
         </div>
+
+        {statusFilter && (
+          <div className="flex items-center gap-2 text-xs">
+            <span style={{ color: "var(--color-muted)" }}>Showing only:</span>
+            <span className={"badge " + (SECTION_BADGE[statusFilter] ?? "badge-gray")}>{statusFilter}</span>
+            <button
+              type="button"
+              onClick={() => setStatusFilter("")}
+              className="underline"
+              style={{ color: "var(--color-primary)" }}
+            >
+              Show all statuses
+            </button>
+          </div>
+        )}
       </div>
 
       {sections.map(({ status, items }) => (

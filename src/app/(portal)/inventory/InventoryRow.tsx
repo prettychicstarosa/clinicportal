@@ -127,14 +127,6 @@ export default function InventoryRow({
         <td className="table-td font-medium">{item.name}</td>
         <td className="table-td">{item.item_type}</td>
         <td className="table-td">{stockDisplay}</td>
-        <td className="table-td">
-          {containerized
-            ? `${item.container_size ?? "—"} ${item.container_unit ?? ""}`
-            : "—"}
-        </td>
-        <td className="table-td">
-          {item.low_stock_alert} {containerized ? item.container_unit : "pcs"}
-        </td>
         <td className="table-td"><span className={"badge " + statusClass}>{item.stock_status}</span></td>
         <td className="table-td">
           <div>{formatDateTime(item.updated_at)}</div>
@@ -154,7 +146,7 @@ export default function InventoryRow({
 
       {open && (
         <tr>
-          <td colSpan={8} className="px-4 pb-4">
+          <td colSpan={6} className="px-4 pb-4">
             <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: "var(--color-border)" }}>
               <div className="font-medium mb-3">
                 {open === "add" ? `Add stock to ${item.name}` : `Record consumption of ${item.name}`}

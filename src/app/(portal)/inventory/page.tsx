@@ -3,7 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatDateTime } from "@/lib/utils";
 import { Plus } from "lucide-react";
-import InventoryRow from "./InventoryRow";
+import InventoryTable from "./InventoryTable";
 import { getCurrentProfile, isManager } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -29,32 +29,7 @@ export default async function InventoryPage() {
         action={<Link href="/inventory/new" className="btn-primary"><Plus size={16}/> Add Item</Link>}
       />
 
-      <div className="card p-0 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-beige-100">
-              <tr>
-                <th className="table-th">Name</th>
-                <th className="table-th">Type</th>
-                <th className="table-th">Stock</th>
-                <th className="table-th">Container</th>
-                <th className="table-th">Alert at</th>
-                <th className="table-th">Status</th>
-                <th className="table-th">Last Updated</th>
-                <th className="table-th"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(items ?? []).map((it: any) => (
-                <InventoryRow key={it.id} item={it} isAdmin={isManager(profile.role)} clients={clients ?? []} />
-              ))}
-              {(!items || items.length === 0) && (
-                <tr><td colSpan={8} className="table-td text-center" style={{ color: "var(--color-muted)" }}>No inventory items yet.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <InventoryTable items={items ?? []} isAdmin={isManager(profile.role)} clients={clients ?? []} />
 
       <div className="card">
         <h3 className="font-serif text-lg mb-3" style={{ color: "var(--color-primary)" }}>Recent Inventory Activity</h3>

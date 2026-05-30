@@ -4,7 +4,8 @@ import { StatCard } from "@/components/StatCard";
 import { PageHeader } from "@/components/PageHeader";
 import { Logo } from "@/components/Logo";
 import {
-  Users, CalendarDays, Sparkles, Receipt, CreditCard, Package, TrendingUp, Wallet, Clock
+  Users, CalendarDays, Sparkles, Receipt, CreditCard, Package, TrendingUp, Wallet, Clock,
+  CalendarRange, CalendarClock, UserX, CheckCircle2
 } from "lucide-react";
 import { formatCurrency, formatDateTime, todayISO, startOfMonthISO } from "@/lib/utils";
 
@@ -19,10 +20,20 @@ export default async function DashboardPage() {
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
 
+  // Current week range (Monday → Sunday), matching the Appointments page filter.
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const diffToMon = (now.getDay() + 6) % 7;
+  const monday = new Date(now); monday.setDate(now.getDate() - diffToMon);
+  const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+  const weekStart = fmt(monday);
+  const weekEnd = fmt(sunday);
+
   const [
     totalClients, todayAppts, activePackages,
     monthExpenses, receivable, lowStock,
-    monthRevenue, monthIncome, recent
+    monthRevenue, monthIncome, recent,
+    weekAppts, pendingAppts, noShowAppts, completedToday
   ] = await Promise.all([
     supabase.from("clients").select("*", { count: "exact", head: true }),
     supabase.from("appointments").select("*", { count: "exact", head: true }).eq("date", today),
@@ -32,7 +43,11 @@ export default async function DashboardPage() {
     supabase.from("inventory").select("*", { count: "exact", head: true }).in("stock_status", ["Low Stock", "Out of Stock"]),
     supabase.from("payments").select("amount").gte("created_at", monthStart),
     supabase.from("income").select("week1,week2,week3,week4,week5").eq("month", currentMonth).eq("year", currentYear).maybeSingle(),
-    supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(10)
+    supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(10),
+    supabase.from("appointments").select("*", { count: "exact", head: true }).gte("date", weekStart).lte("date", weekEnd),
+    supabase.from("appointments").select("*", { count: "exact", head: true }).eq("status", "Pending"),
+    supabase.from("appointments").select("*", { count: "exact", head: true }).eq("status", "No Show"),
+    supabase.from("appointments").select("*", { count: "exact", head: true }).eq("status", "Done").eq("date", today)
   ]);
 
   const expensesSum = (monthExpenses.data ?? []).reduce((a, b) => a + Number(b.amount || 0), 0);
@@ -61,9 +76,19 @@ export default async function DashboardPage() {
         }
       />
 
+      <div>
+        <h2 className="font-serif text-lg mb-3" style={{ color: "var(--color-primary)" }}>Appointments at a glance</h2>
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <StatCard label="Today's Appointments"   value={todayAppts.count ?? 0}     icon={CalendarDays} />
+          <StatCard label="This Week Appointments" value={weekAppts.count ?? 0}      icon={CalendarRange} />
+          <StatCard label="Pending Appointments"   value={pendingAppts.count ?? 0}   icon={CalendarClock} />
+          <StatCard label="No Show Count"          value={noShowAppts.count ?? 0}    icon={UserX} />
+          <StatCard label="Completed Sessions Today" value={completedToday.count ?? 0} icon={CheckCircle2} />
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Clients"        value={totalClients.count ?? 0}            icon={Users} />
-        <StatCard label="Today's Appointments" value={todayAppts.count ?? 0}              icon={CalendarDays} />
         <StatCard label="Active Packages"      value={activePackages.count ?? 0}          icon={Sparkles} />
         <StatCard label="Low Stock Items"      value={lowStock.count ?? 0}                icon={Package} />
         <StatCard label="Monthly Income"       value={formatCurrency(manualIncomeSum)}    icon={Wallet} />

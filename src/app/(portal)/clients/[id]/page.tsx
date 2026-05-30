@@ -16,7 +16,7 @@ export default async function ClientProfile({ params }: { params: { id: string }
 
   const [{ data: appts }, { data: packages }, { data: payments }, { data: logs }] = await Promise.all([
     supabase.from("appointments")
-      .select("*, packages(name), assigned:staff_id(full_name), creator:created_by(full_name)")
+      .select("*, packages(name), creator:created_by(full_name)")
       .eq("client_id", params.id)
       .order("date", { ascending: false })
       .order("time", { ascending: false })
@@ -33,6 +33,22 @@ export default async function ClientProfile({ params }: { params: { id: string }
       .select("*").eq("entity_id", params.id)
       .order("created_at", { ascending: false }).limit(20)
   ]);
+
+  // Resolve assigned-practitioner names separately (the staff_id FK embed is
+  // omitted above so the query never breaks when the column isn't present yet).
+  const apptStaffIds = Array.from(
+    new Set((appts ?? []).map((a: any) => a.staff_id).filter(Boolean))
+  );
+  const apptStaffMap: Record<string, string> = {};
+  if (apptStaffIds.length > 0) {
+    const { data: staff } = await supabase
+      .from("profiles").select("id, full_name").in("id", apptStaffIds);
+    for (const s of staff ?? []) apptStaffMap[s.id] = s.full_name;
+  }
+  const apptRows = (appts ?? []).map((a: any) => ({
+    ...a,
+    assigned: a.staff_id ? { full_name: apptStaffMap[a.staff_id] ?? null } : null
+  }));
 
   const statusClass =
     client.payment_status === "Paid" ? "badge-green" :
@@ -150,7 +166,7 @@ export default async function ClientProfile({ params }: { params: { id: string }
       </Panel>
 
       <Panel title="Appointment History">
-        {(appts ?? []).length === 0 ? (
+        {apptRows.length === 0 ? (
           <Empty />
         ) : (
           <div className="overflow-x-auto">
@@ -164,7 +180,7 @@ export default async function ClientProfile({ params }: { params: { id: string }
                 </tr>
               </thead>
               <tbody>
-                {appts!.map((a: any) => {
+                {apptRows.map((a: any) => {
                   const badgeCls =
                     a.status === "Done" ? "badge-green" :
                     a.status === "Cancelled" ? "badge-red" :

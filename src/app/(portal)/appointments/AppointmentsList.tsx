@@ -1,17 +1,20 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import AppointmentRow from "./AppointmentRow";
 
-// Fixed display order — Scheduled is always first.
-const STATUS_ORDER = ["Scheduled", "Pending", "Done", "No Show", "Cancelled"] as const;
+// Fixed display order — Scheduled is always first. "Rescheduled" only renders
+// when at least one appointment actually has that status.
+const STATUS_ORDER = ["Scheduled", "Pending", "Done", "No Show", "Cancelled", "Rescheduled"] as const;
+const ALWAYS_SHOWN = ["Scheduled", "Pending", "Done", "No Show", "Cancelled"];
 
 const SECTION_BADGE: Record<string, string> = {
   Scheduled: "badge-blue",
   Pending: "badge-amber",
   Done: "badge-green",
   "No Show": "badge-amber",
-  Cancelled: "badge-red"
+  Cancelled: "badge-red",
+  Rescheduled: "badge-gray"
 };
 
 const DATE_FILTERS = ["Today", "This Week", "This Month", "All"] as const;
@@ -65,6 +68,10 @@ export default function AppointmentsList({
   const [dateFilter, setDateFilter] = useState<DateFilter>(validFilter);
   const [statusFilter, setStatusFilter] = useState<string>(validStatus);
 
+  useEffect(() => {
+    console.log("appointments loaded", appts.length, appts);
+  }, [appts]);
+
   // Distinct client names for the datalist (typeahead suggestions).
   const clientNames = useMemo(() => {
     const set = new Set<string>();
@@ -86,7 +93,8 @@ export default function AppointmentsList({
     });
   }, [appts, query, dateFilter]);
 
-  // Group into ordered status sections (all sections always shown with counts).
+  // Group into ordered status sections (core sections always shown with counts;
+  // Rescheduled only appears if such appointments exist).
   const sections = useMemo(() => {
     const map = new Map<string, any[]>();
     for (const a of filtered) {
@@ -96,7 +104,8 @@ export default function AppointmentsList({
     }
     return STATUS_ORDER
       .filter(status => !statusFilter || status === statusFilter)
-      .map(status => ({ status, items: map.get(status) ?? [] }));
+      .map(status => ({ status, items: map.get(status) ?? [] }))
+      .filter(({ status, items }) => ALWAYS_SHOWN.includes(status) || items.length > 0);
   }, [filtered, statusFilter]);
 
   return (

@@ -64,7 +64,7 @@ export default function AppointmentRow({ appt, isAdmin }: { appt: any; isAdmin: 
       <td className="table-td">{formatDate(appt.date)}</td>
       <td className="table-td">{appt.time?.slice(0, 5)}</td>
       <td className="table-td">
-        {appt.assigned?.full_name ?? <span style={{ color: "var(--color-muted)" }}>—</span>}
+        {appt.assigned?.full_name ?? <span style={{ color: "var(--color-muted)" }}>— Unassigned —</span>}
       </td>
       <td className="table-td">
         <select

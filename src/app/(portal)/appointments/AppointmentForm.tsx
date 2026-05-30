@@ -46,32 +46,53 @@ export default function AppointmentForm({ mode, initial = {}, clients, packages 
     start(async () => {
       const supabase = createSupabaseBrowserClient();
       const { data: { user } } = await supabase.auth.getUser();
-      const payload = {
+      // Base payload without staff_id, plus the staff_id we'd like to save.
+      const base = {
         client_id: f.client_id,
         package_id: f.package_id || null,
-        staff_id: f.staff_id || null,
         date: f.date,
         time: f.time,
         treatment: f.treatment,
         status: f.status,
         notes: f.notes
       };
+      const payload = { ...base, staff_id: f.staff_id || null };
+
+      // The staff_id column may not exist yet (migration 0010 not applied).
+      // If a write fails because of it, retry once without staff_id so the
+      // appointment still saves.
+      const isMissingStaffId = (e: any) =>
+        !!e && (e.code === "PGRST204" || e.code === "42703" ||
+          (typeof e.message === "string" && e.message.toLowerCase().includes("staff_id")));
+
       if (mode === "create") {
-        const { data, error } = await supabase
+        let res = await supabase
           .from("appointments")
           .insert({ ...payload, created_by: user?.id })
           .select("id").single();
-        if (error) { setErr(error.message); return; }
+        if (res.error && isMissingStaffId(res.error)) {
+          res = await supabase
+            .from("appointments")
+            .insert({ ...base, created_by: user?.id })
+            .select("id").single();
+        }
+        if (res.error) { setErr(res.error.message); return; }
         await supabase.from("activity_logs").insert({
           actor_id: user?.id, action: "scheduled appointment",
-          entity: "appointment", entity_id: data!.id
+          entity: "appointment", entity_id: res.data!.id
         });
       } else {
-        const { error } = await supabase
+        let res = await supabase
           .from("appointments")
           .update({ ...payload, updated_by: user?.id })
           .eq("id", initial.id);
-        if (error) { setErr(error.message); return; }
+        if (res.error && isMissingStaffId(res.error)) {
+          res = await supabase
+            .from("appointments")
+            .update({ ...base, updated_by: user?.id })
+            .eq("id", initial.id);
+        }
+        if (res.error) { setErr(res.error.message); return; }
         await supabase.from("activity_logs").insert({
           actor_id: user?.id, action: "updated appointment",
           entity: "appointment", entity_id: initial.id

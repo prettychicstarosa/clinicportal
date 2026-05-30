@@ -8,17 +8,19 @@ type Props = {
   initial?: any;
   clients: { id: string; full_name: string }[];
   packages?: { id: string; name: string; client_id: string; total_sessions: number; used_sessions: number }[];
+  staff?: { id: string; full_name: string }[];
 };
 
 const STATUSES = ["Scheduled", "Pending", "Done", "No Show", "Cancelled"];
 
-export default function AppointmentForm({ mode, initial = {}, clients, packages = [] }: Props) {
+export default function AppointmentForm({ mode, initial = {}, clients, packages = [], staff = [] }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const [f, setF] = useState({
     client_id: initial.client_id ?? "",
     package_id: initial.package_id ?? "",
+    staff_id: initial.staff_id ?? "",
     date: initial.date ?? new Date().toISOString().split("T")[0],
     time: initial.time ?? "10:00",
     treatment: initial.treatment ?? "",
@@ -47,6 +49,7 @@ export default function AppointmentForm({ mode, initial = {}, clients, packages 
       const payload = {
         client_id: f.client_id,
         package_id: f.package_id || null,
+        staff_id: f.staff_id || null,
         date: f.date,
         time: f.time,
         treatment: f.treatment,
@@ -118,6 +121,13 @@ export default function AppointmentForm({ mode, initial = {}, clients, packages 
       <div className="md:col-span-2">
         <label className="label">Treatment / Notes</label>
         <input className="input" placeholder="e.g. Facial Session #2" value={f.treatment} onChange={e => set("treatment", e.target.value)} />
+      </div>
+      <div>
+        <label className="label">Assigned Practitioner</label>
+        <select className="input" value={f.staff_id} onChange={e => set("staff_id", e.target.value)}>
+          <option value="">— Unassigned —</option>
+          {staff.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+        </select>
       </div>
       <div>
         <label className="label">Status</label>

@@ -139,6 +139,7 @@ export default function AppointmentsList({ appts, isAdmin }: { appts: any[]; isA
                       <th className="table-th">Package</th>
                       <th className="table-th">Date</th>
                       <th className="table-th">Time</th>
+                      <th className="table-th">Staff</th>
                       <th className="table-th">Status</th>
                       <th className="table-th">Notes</th>
                       <th className="table-th"></th>

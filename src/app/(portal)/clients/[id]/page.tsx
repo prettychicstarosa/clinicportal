@@ -16,7 +16,7 @@ export default async function ClientProfile({ params }: { params: { id: string }
 
   const [{ data: appts }, { data: packages }, { data: payments }, { data: logs }] = await Promise.all([
     supabase.from("appointments")
-      .select("*, packages(name), staff:created_by(full_name)")
+      .select("*, packages(name), assigned:staff_id(full_name), creator:created_by(full_name)")
       .eq("client_id", params.id)
       .order("date", { ascending: false })
       .order("time", { ascending: false })
@@ -177,7 +177,7 @@ export default async function ClientProfile({ params }: { params: { id: string }
                         <span style={{ color: "var(--color-muted)" }}> · {a.time?.slice(0, 5)}</span>
                       </td>
                       <td className="table-td">{a.treatment ?? a.packages?.name ?? "—"}</td>
-                      <td className="table-td">{a.staff?.full_name ?? <span style={{ color: "var(--color-muted)" }}>—</span>}</td>
+                      <td className="table-td">{a.assigned?.full_name ?? a.creator?.full_name ?? <span style={{ color: "var(--color-muted)" }}>—</span>}</td>
                       <td className="table-td"><span className={"badge " + badgeCls}>{a.status}</span></td>
                     </tr>
                   );

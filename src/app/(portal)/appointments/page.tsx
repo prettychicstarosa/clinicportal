@@ -3,7 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatDate } from "@/lib/utils";
 import { Plus } from "lucide-react";
-import AppointmentRow from "./AppointmentRow";
+import AppointmentsList from "./AppointmentsList";
 import { getCurrentProfile, isManager } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -63,31 +63,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
           {groups.size === 0 && <p className="text-sm" style={{ color: "var(--color-muted)" }}>No appointments yet.</p>}
         </div>
       ) : (
-        <div className="card p-0 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-beige-100">
-                <tr>
-                  <th className="table-th">Client</th>
-                  <th className="table-th">Package</th>
-                  <th className="table-th">Date</th>
-                  <th className="table-th">Time</th>
-                  <th className="table-th">Status</th>
-                  <th className="table-th">Notes</th>
-                  <th className="table-th"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {(appts ?? []).map((a: any) => (
-                  <AppointmentRow key={a.id} appt={a} isAdmin={isManager(profile.role)} />
-                ))}
-                {(!appts || appts.length === 0) && (
-                  <tr><td colSpan={7} className="table-td text-center" style={{ color: "var(--color-muted)" }}>No appointments yet.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <AppointmentsList appts={appts ?? []} isAdmin={isManager(profile.role)} />
       )}
     </div>
   );

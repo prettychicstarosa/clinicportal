@@ -43,9 +43,16 @@ export default async function PackagesPage() {
             <tbody>
               {(packages ?? []).map((p: any) => {
                 const remaining = Math.max(0, (p.total_sessions ?? 0) - (p.used_sessions ?? 0));
+                // Payment status with rounding tolerance: balance <= ₱0.99 counts as Paid.
+                const price = Number(p.price ?? 0);
+                const paid = Number(p.amount_paid ?? 0);
+                const rawBalance = Math.max(0, price - paid);
+                const isPaid = price > 0 && rawBalance <= 0.99;
+                const paymentStatus = isPaid ? "Paid" : paid > 0 ? "Partial" : "Unpaid";
+                const displayBalance = isPaid ? 0 : rawBalance;
                 const payCls =
-                  p.payment_status === "Paid" ? "badge-green" :
-                  p.payment_status === "Partial" ? "badge-amber" : "badge-red";
+                  paymentStatus === "Paid" ? "badge-green" :
+                  paymentStatus === "Partial" ? "badge-amber" : "badge-red";
                 const statCls =
                   p.status === "Active" ? "badge-blue" :
                   p.status === "Completed" ? "badge-green" :
@@ -56,11 +63,11 @@ export default async function PackagesPage() {
                       <Link href={`/clients/${p.client_id}`} className="underline">{p.clients?.full_name}</Link>
                     </td>
                     <td className="table-td">{p.name}</td>
-                    <td className="table-td">{remaining}/{p.total_sessions}</td>
-                    <td className="table-td">{formatCurrency(p.price)}</td>
-                    <td className="table-td">{formatCurrency(p.amount_paid)}</td>
-                    <td className="table-td">{formatCurrency(p.balance)}</td>
-                    <td className="table-td"><span className={"badge " + payCls}>{p.payment_status}</span></td>
+                    <td className="table-td font-semibold text-red-600">{remaining}/{p.total_sessions}</td>
+                    <td className="table-td">{formatCurrency(price)}</td>
+                    <td className="table-td">{formatCurrency(paid)}</td>
+                    <td className="table-td">{formatCurrency(displayBalance)}</td>
+                    <td className="table-td"><span className={"badge " + payCls}>{paymentStatus}</span></td>
                     <td className="table-td"><span className={"badge " + statCls}>{p.status}</span></td>
                     <td className="table-td">{formatDate(p.start_date)}</td>
                     <td className="table-td">{formatDate(p.valid_until)}</td>

@@ -59,8 +59,10 @@ export default function PackageForm({
   });
   const set = (k: string, v: any) => setF(p => ({ ...p, [k]: v }));
 
-  const balance = Math.max(0, Number(f.price) - Number(f.amount_paid));
-  const status = balance === 0 && Number(f.price) > 0 ? "Paid"
+  const rawBalance = Math.max(0, Number(f.price) - Number(f.amount_paid));
+  const isPaid = Number(f.price) > 0 && rawBalance <= 0.99;
+  const balance = isPaid ? 0 : rawBalance;
+  const status = isPaid ? "Paid"
     : Number(f.amount_paid) > 0 ? "Partial" : "Unpaid";
 
   const previewDates = useMemo(() => {
@@ -99,6 +101,79 @@ export default function PackageForm({
         const { error: updErr } = await supabase
           .from("packages").update(pkgPayload).eq("id", initial!.id);
         if (updErr) { setErr(updErr.message); return; }
+
+        // ---- Sync appointments with the new session count ----
+        const oldSessions = Math.max(0, Math.floor(Number(initial?.total_sessions) || 0));
+        const usedSessions = Math.max(0, Math.floor(Number(initial?.used_sessions) || 0));
+
+        if (sessions > oldSessions) {
+          // Sessions increased → create additional scheduled appointments.
+          // Continue the schedule from the existing generated appointments.
+          const { data: existing } = await supabase
+            .from("appointments")
+            .select("date, time, session_index")
+            .eq("package_id", initial!.id)
+            .order("session_index", { ascending: true });
+
+          const baseDate = f.start_date || existing?.[0]?.date || today;
+          const lastTime = existing && existing.length > 0
+            ? existing[existing.length - 1].time
+            : "10:00";
+
+          const rows = [] as any[];
+          for (let i = oldSessions; i < sessions; i++) {
+            rows.push({
+              client_id: initial!.client_id,
+              package_id: initial!.id,
+              package_name: f.name.trim(),
+              generated_from_package: true,
+              date: addDaysISO(baseDate, i * intervalDays),
+              time: lastTime || "10:00",
+              treatment: `${f.name.trim()} — Session ${i + 1}/${sessions}`,
+              status: "Scheduled",
+              session_index: i + 1,
+              created_by: user?.id ?? null
+            });
+          }
+          if (rows.length > 0) {
+            const { error: addErr } = await supabase.from("appointments").insert(rows);
+            if (addErr) { setErr(`Package saved, but adding appointments failed: ${addErr.message}`); return; }
+            await supabase.from("activity_logs").insert({
+              actor_id: user?.id,
+              action: "added package appointments",
+              entity: "package",
+              entity_id: initial!.id,
+              details: `${rows.length} new appointment${rows.length === 1 ? "" : "s"} for ${f.name.trim()}`
+            });
+          }
+        } else if (sessions < oldSessions) {
+          // Sessions decreased → only remove FUTURE scheduled, auto-generated rows
+          // beyond the new count. Never touch Done / No Show / Cancelled history.
+          const { error: delErr } = await supabase
+            .from("appointments")
+            .delete()
+            .eq("package_id", initial!.id)
+            .eq("generated_from_package", true)
+            .eq("status", "Scheduled")
+            .gt("session_index", sessions)
+            .gte("date", today);
+          if (delErr) { setErr(`Package saved, but trimming appointments failed: ${delErr.message}`); return; }
+          await supabase.from("activity_logs").insert({
+            actor_id: user?.id,
+            action: "trimmed package appointments",
+            entity: "package",
+            entity_id: initial!.id,
+            details: `Reduced ${f.name.trim()} to ${sessions} sessions`
+          });
+        }
+
+        // Keep the client's session counters in sync (history preserved).
+        await supabase.from("clients").update({
+          total_sessions: sessions,
+          remaining_sessions: Math.max(0, sessions - usedSessions),
+          valid_until: f.valid_until || null,
+          updated_by: user?.id ?? null
+        }).eq("id", initial!.client_id);
 
         await supabase.from("activity_logs").insert({
           actor_id: user?.id,

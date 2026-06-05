@@ -2,9 +2,14 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { logActivity } from "@/lib/activity-client";
 
-const CATEGORIES = ["Rent","Salary","Supplies","Marketing","Utilities","Other"];
+const CATEGORIES = ["Rent","Salary","Supplies","Marketing","Utilities","Maintenance","Other"];
 const STATUSES = ["Paid","Unpaid","Partial"];
+
+function todayStr() {
+  return new Date().toISOString().split("T")[0];
+}
 
 export default function ExpenseForm({ mode, initial = {} as any }: { mode: "create"|"edit"; initial?: any }) {
   const router = useRouter();
@@ -14,6 +19,7 @@ export default function ExpenseForm({ mode, initial = {} as any }: { mode: "crea
     title: initial.title ?? "",
     category: initial.category ?? "Supplies",
     amount: initial.amount ?? 0,
+    expense_date: initial.expense_date ?? initial.due_date ?? todayStr(),
     due_date: initial.due_date ?? "",
     paid_status: initial.paid_status ?? "Unpaid",
     paid_amount: initial.paid_amount ?? 0,
@@ -31,20 +37,34 @@ export default function ExpenseForm({ mode, initial = {} as any }: { mode: "crea
         ...f,
         amount: Number(f.amount) || 0,
         paid_amount: Number(f.paid_amount) || 0,
+        expense_date: f.expense_date || todayStr(),
         due_date: f.due_date || null
       };
+      const snap = (src: any) => ({
+        title: src.title ?? null,
+        category: src.category ?? null,
+        amount: Number(src.amount) || 0,
+        expense_date: src.expense_date ?? null,
+        paid_status: src.paid_status ?? null,
+        paid_amount: Number(src.paid_amount) || 0
+      });
       if (mode === "create") {
         payload.created_by = user?.id ?? null;
         const { data, error } = await supabase.from("expenses").insert(payload).select("id").single();
         if (error) { setErr(error.message); return; }
-        await supabase.from("activity_logs").insert({
-          actor_id: user?.id, action: "added expense " + f.title, entity: "expense", entity_id: data!.id
+        await logActivity({
+          action: "added expense " + f.title, entity: "expense", entity_id: data!.id,
+          details: `${f.category} · ${f.title}`,
+          newValue: snap(f)
         });
       } else {
         const { error } = await supabase.from("expenses").update(payload).eq("id", initial.id);
         if (error) { setErr(error.message); return; }
-        await supabase.from("activity_logs").insert({
-          actor_id: user?.id, action: "updated expense " + f.title, entity: "expense", entity_id: initial.id
+        await logActivity({
+          action: "updated expense " + f.title, entity: "expense", entity_id: initial.id,
+          details: `${f.category} · ${f.title}`,
+          oldValue: snap(initial),
+          newValue: snap(f)
         });
       }
       router.push("/expenses");
@@ -62,6 +82,9 @@ export default function ExpenseForm({ mode, initial = {} as any }: { mode: "crea
         </select></div>
       <div><label className="label">Amount</label>
         <input type="number" step="0.01" className="input" value={f.amount} onChange={e => set("amount", e.target.value)} /></div>
+      <div><label className="label">Expense Date</label>
+        <input type="date" className="input" value={f.expense_date ?? ""} onChange={e => set("expense_date", e.target.value)} />
+        <p className="text-xs mt-1" style={{ color: "var(--color-muted)" }}>Used for monthly totals and reports.</p></div>
       <div><label className="label">Due Date</label>
         <input type="date" className="input" value={f.due_date ?? ""} onChange={e => set("due_date", e.target.value)} /></div>
       <div><label className="label">Paid Status</label>

@@ -96,12 +96,18 @@ export type SessionRow = {
   created_at: string;
 };
 
+export const EXPENSE_CATEGORIES = [
+  "Rent", "Salary", "Supplies", "Marketing", "Utilities", "Maintenance", "Other"
+] as const;
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
 export type Expense = {
   id: string;
   title: string;
-  category: "Rent" | "Salary" | "Supplies" | "Marketing" | "Utilities" | "Other";
+  category: ExpenseCategory;
   amount: number;
   due_date: string | null;
+  expense_date: string | null;
   paid_status: "Paid" | "Unpaid" | "Partial";
   paid_amount: number;
   notes: string | null;
@@ -148,15 +154,22 @@ export type InventoryLog = {
   performer_name?: string;
 };
 
-export type Payment = {
+export type DeletedAppointment = {
   id: string;
-  client_id: string;
+  appointment_id: string | null;
+  client_id: string | null;
+  client_name: string | null;
   package_id: string | null;
-  amount: number;
-  method: string | null;
+  package_name: string | null;
+  treatment: string | null;
+  original_date: string | null;
+  original_time: string | null;
+  status: string | null;
   notes: string | null;
-  created_by: string | null;
-  created_at: string;
+  reason: string | null;
+  deleted_by: string | null;
+  deleted_by_name: string | null;
+  deleted_at: string;
 };
 
 export type ActivityLog = {
@@ -175,7 +188,6 @@ export type PermissionKey =
   | "clients"
   | "appointments"
   | "packages"
-  | "payments"
   | "expenses"
   | "inventory"
   | "income"
@@ -189,7 +201,6 @@ export type StaffPermissions = {
   clients: boolean;
   appointments: boolean;
   packages: boolean;
-  payments: boolean;
   expenses: boolean;
   inventory: boolean;
   income: boolean;

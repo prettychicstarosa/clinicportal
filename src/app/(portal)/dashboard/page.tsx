@@ -7,7 +7,7 @@ import {
   Users, CalendarDays, Sparkles, Receipt, CreditCard, Package, TrendingUp, Wallet, Clock,
   CalendarRange, CalendarClock, UserX, CheckCircle2
 } from "lucide-react";
-import { formatCurrency, formatDateTime, todayISO, startOfMonthISO } from "@/lib/utils";
+import { formatCurrency, formatDateTime, todayISO } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +15,12 @@ export default async function DashboardPage() {
   const supabase = createSupabaseServerClient();
   const settings = await getSettings();
   const today = todayISO();
-  const monthStart = startOfMonthISO();
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
+  // First day of the current month as a plain date (YYYY-MM-01) for the
+  // date-typed expense_date column.
+  const monthStartDate = `${currentYear}-${String(currentMonth).padStart(2, "0")}-01`;
 
   // Current week range (Monday → Sunday), matching the Appointments page filter.
   const fmt = (d: Date) =>
@@ -32,16 +34,15 @@ export default async function DashboardPage() {
   const [
     totalClients, todayAppts, activePackages,
     monthExpenses, receivable, lowStock,
-    monthRevenue, monthIncome, recent,
+    monthIncome, recent,
     weekAppts, pendingAppts, noShowAppts, completedToday
   ] = await Promise.all([
     supabase.from("clients").select("*", { count: "exact", head: true }),
     supabase.from("appointments").select("*", { count: "exact", head: true }).eq("date", today),
     supabase.from("packages").select("*", { count: "exact", head: true }).eq("status", "Active"),
-    supabase.from("expenses").select("amount").gte("created_at", monthStart),
+    supabase.from("expenses").select("amount, expense_date, created_at").gte("expense_date", monthStartDate),
     supabase.from("clients").select("balance"),
     supabase.from("inventory").select("*", { count: "exact", head: true }).in("stock_status", ["Low Stock", "Out of Stock"]),
-    supabase.from("payments").select("amount").gte("created_at", monthStart),
     supabase.from("income").select("week1,week2,week3,week4,week5").eq("month", currentMonth).eq("year", currentYear).maybeSingle(),
     supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(10),
     supabase.from("appointments").select("*", { count: "exact", head: true }).gte("date", weekStart).lte("date", weekEnd),
@@ -52,7 +53,6 @@ export default async function DashboardPage() {
 
   const expensesSum = (monthExpenses.data ?? []).reduce((a, b) => a + Number(b.amount || 0), 0);
   const receivableSum = (receivable.data ?? []).reduce((a, b) => a + Number(b.balance || 0), 0);
-  const revenueSum = (monthRevenue.data ?? []).reduce((a, b) => a + Number(b.amount || 0), 0);
   const inc = monthIncome.data as any | null;
   const manualIncomeSum = inc
     ? Number(inc.week1 || 0) + Number(inc.week2 || 0) + Number(inc.week3 || 0)
@@ -95,7 +95,6 @@ export default async function DashboardPage() {
         <StatCard label="Monthly Expenses"     value={formatCurrency(expensesSum)}        icon={Receipt} />
         <StatCard label="Net Income"           value={formatCurrency(netIncome)}          icon={TrendingUp} />
         <StatCard label="Amount Receivable"    value={formatCurrency(receivableSum)}      icon={CreditCard} />
-        <StatCard label="Monthly Payments"     value={formatCurrency(revenueSum)}         icon={TrendingUp} />
       </div>
 
       <div className="card">

@@ -101,7 +101,7 @@ export default function ClientForm({ mode, initial = {} }: Props) {
         <div className="md:col-span-2"><label className="label">Facebook Profile</label>
           <input className="input" placeholder="FB: Dez Casino" value={f.facebook} onChange={e => set("facebook", e.target.value)} /></div>
         <p className="md:col-span-2 text-xs" style={{ color: "var(--color-muted)" }}>
-          Packages, payments, and sessions are managed from the Packages module — no need to enter them here.
+          Packages, balances, and sessions are managed from the Packages module — no need to enter them here.
         </p>
       </Section>
 

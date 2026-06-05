@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, CalendarDays, Sparkles, Receipt,
-  Package, CreditCard, BarChart3, Wallet, BookOpen,
+  Package, BarChart3, Wallet, BookOpen,
   Settings as SettingsIcon, LogOut
 } from "lucide-react";
 import { Logo } from "./Logo";
@@ -15,7 +15,6 @@ const NAV: { href: string; label: string; icon: any; key: PermissionKey }[] = [
   { href: "/clients",      label: "Clients",      icon: Users,           key: "clients" },
   { href: "/appointments", label: "Appointments", icon: CalendarDays,    key: "appointments" },
   { href: "/packages",     label: "Packages",     icon: Sparkles,        key: "packages" },
-  { href: "/payments",     label: "Payments",     icon: CreditCard,      key: "payments" },
   { href: "/inventory",    label: "Inventory",    icon: Package,         key: "inventory" },
   { href: "/guidelines",   label: "Guidelines",   icon: BookOpen,        key: "guidelines" },
   { href: "/expenses",     label: "Expenses",     icon: Receipt,         key: "expenses" },

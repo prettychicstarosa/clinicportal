@@ -2,6 +2,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { logActivity } from "@/lib/activity-client";
 import { formatCurrency } from "@/lib/utils";
 
 type ClientLite = { id: string; full_name: string };
@@ -104,7 +105,6 @@ export default function PackageForm({
 
         // ---- Sync appointments with the new session count ----
         const oldSessions = Math.max(0, Math.floor(Number(initial?.total_sessions) || 0));
-        const usedSessions = Math.max(0, Math.floor(Number(initial?.used_sessions) || 0));
 
         if (sessions > oldSessions) {
           // Sessions increased → create additional scheduled appointments.
@@ -149,6 +149,37 @@ export default function PackageForm({
         } else if (sessions < oldSessions) {
           // Sessions decreased → only remove FUTURE scheduled, auto-generated rows
           // beyond the new count. Never touch Done / No Show / Cancelled history.
+          const trimQuery = supabase
+            .from("appointments")
+            .select("id, client_id, treatment, date, time, status, notes")
+            .eq("package_id", initial!.id)
+            .eq("generated_from_package", true)
+            .eq("status", "Scheduled")
+            .gt("session_index", sessions)
+            .gte("date", today);
+          const { data: toTrim } = await trimQuery;
+
+          // Snapshot the schedules being auto-removed into the Deleted Schedules log.
+          if (toTrim && toTrim.length > 0) {
+            const clientName = clients.find(c => c.id === initial!.client_id)?.full_name ?? null;
+            await supabase.from("deleted_appointments").insert(
+              toTrim.map((a: any) => ({
+                appointment_id: a.id,
+                client_id: a.client_id ?? initial!.client_id,
+                client_name: clientName,
+                package_id: initial!.id,
+                package_name: f.name.trim(),
+                treatment: a.treatment ?? null,
+                original_date: a.date ?? null,
+                original_time: a.time ?? null,
+                status: a.status ?? null,
+                notes: a.notes ?? null,
+                reason: `Auto-removed — package reduced to ${sessions} sessions`,
+                deleted_by: user?.id ?? null
+              }))
+            );
+          }
+
           const { error: delErr } = await supabase
             .from("appointments")
             .delete()
@@ -167,20 +198,33 @@ export default function PackageForm({
           });
         }
 
-        // Keep the client's session counters in sync (history preserved).
+        // Client session counters + balance are kept in sync automatically by
+        // the database (derived from packages and the real appointment
+        // schedule), so we only persist the validity date here.
         await supabase.from("clients").update({
-          total_sessions: sessions,
-          remaining_sessions: Math.max(0, sessions - usedSessions),
           valid_until: f.valid_until || null,
           updated_by: user?.id ?? null
         }).eq("id", initial!.client_id);
 
-        await supabase.from("activity_logs").insert({
-          actor_id: user?.id,
+        await logActivity({
           action: "edited package",
           entity: "package",
           entity_id: initial!.id,
-          details: `${f.name.trim()} (${sessions} sessions, ${formatCurrency(Number(f.price) || 0)})`
+          details: `${f.name.trim()} (${sessions} sessions, ${formatCurrency(Number(f.price) || 0)})`,
+          oldValue: {
+            name: initial?.name ?? null,
+            total_sessions: Number(initial?.total_sessions) || 0,
+            price: Number(initial?.price) || 0,
+            amount_paid: Number(initial?.amount_paid) || 0,
+            status: initial?.status ?? null
+          },
+          newValue: {
+            name: f.name.trim(),
+            total_sessions: sessions,
+            price: Number(f.price) || 0,
+            amount_paid: Number(f.amount_paid) || 0,
+            status: f.status
+          }
         });
 
         router.push("/packages");
@@ -208,24 +252,14 @@ export default function PackageForm({
       if (insertErr) { setErr(insertErr.message); return; }
       const pkgId = pkg!.id;
 
+      // Session counters + balance are derived automatically by the database
+      // from this package (and its appointments), so we only set descriptive
+      // fields here.
       await supabase.from("clients").update({
         package_availed: f.name.trim(),
-        total_sessions: sessions,
-        remaining_sessions: sessions,
         valid_until: f.valid_until || null,
         updated_by: user?.id ?? null
       }).eq("id", f.client_id);
-
-      if (Number(f.amount_paid) > 0) {
-        await supabase.from("payments").insert({
-          client_id: f.client_id,
-          package_id: pkgId,
-          amount: Number(f.amount_paid),
-          method: "Initial Payment",
-          notes: `Initial payment for package: ${f.name.trim()}`,
-          created_by: user?.id ?? null
-        });
-      }
 
       if (f.generate_appointments && f.start_date && sessions >= 1) {
         const rows = [] as any[];
@@ -257,12 +291,17 @@ export default function PackageForm({
         });
       }
 
-      await supabase.from("activity_logs").insert({
-        actor_id: user?.id,
+      await logActivity({
         action: "created package",
         entity: "package",
         entity_id: pkgId,
-        details: `${f.name.trim()} (${sessions} sessions, ${formatCurrency(Number(f.price) || 0)})`
+        details: `${f.name.trim()} (${sessions} sessions, ${formatCurrency(Number(f.price) || 0)})`,
+        newValue: {
+          name: f.name.trim(),
+          total_sessions: sessions,
+          price: Number(f.price) || 0,
+          amount_paid: Number(f.amount_paid) || 0
+        }
       });
 
       router.push("/packages");

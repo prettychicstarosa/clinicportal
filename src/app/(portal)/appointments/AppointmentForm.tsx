@@ -2,6 +2,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { logActivity } from "@/lib/activity-client";
 
 type Props = {
   mode: "create" | "edit";
@@ -43,6 +44,15 @@ export default function AppointmentForm({ mode, initial = {}, clients, packages 
     e.preventDefault();
     setErr(null);
     if (!f.client_id) { setErr("Please select a client."); return; }
+    const clientName = clients.find(c => c.id === f.client_id)?.full_name ?? "";
+    const snapshot = (src: any) => ({
+      date: src.date ?? null,
+      time: src.time ?? null,
+      treatment: src.treatment ?? null,
+      status: src.status ?? null,
+      package_id: src.package_id || null,
+      staff_id: src.staff_id || null
+    });
     start(async () => {
       const supabase = createSupabaseBrowserClient();
       const { data: { user } } = await supabase.auth.getUser();
@@ -77,9 +87,11 @@ export default function AppointmentForm({ mode, initial = {}, clients, packages 
             .select("id").single();
         }
         if (res.error) { setErr(res.error.message); return; }
-        await supabase.from("activity_logs").insert({
-          actor_id: user?.id, action: "scheduled appointment",
-          entity: "appointment", entity_id: res.data!.id
+        await logActivity({
+          action: "scheduled appointment",
+          entity: "appointment", entity_id: res.data!.id,
+          details: `${clientName} · ${f.date} ${f.time}`,
+          newValue: snapshot(f)
         });
       } else {
         let res = await supabase
@@ -93,9 +105,12 @@ export default function AppointmentForm({ mode, initial = {}, clients, packages 
             .eq("id", initial.id);
         }
         if (res.error) { setErr(res.error.message); return; }
-        await supabase.from("activity_logs").insert({
-          actor_id: user?.id, action: "updated appointment",
-          entity: "appointment", entity_id: initial.id
+        await logActivity({
+          action: "updated appointment",
+          entity: "appointment", entity_id: initial.id,
+          details: `${clientName} · ${initial.date ?? ""} ${initial.time ?? ""} → ${f.date} ${f.time}`,
+          oldValue: snapshot(initial),
+          newValue: snapshot(f)
         });
       }
       router.push("/appointments");

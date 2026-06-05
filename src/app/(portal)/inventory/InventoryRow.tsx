@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { logActivity } from "@/lib/activity-client";
 import { formatDateTime } from "@/lib/utils";
 
 type ClientLite = { id: string; full_name: string };
@@ -78,11 +79,17 @@ export default function InventoryRow({
       });
 
       const clientName = clientId ? clients.find(c => c.id === clientId)?.full_name : null;
-      await supabase.from("activity_logs").insert({
-        actor_id: user?.id,
+      await logActivity({
         action: open === "add" ? "added stock" : "consumed stock",
         entity: "inventory", entity_id: item.id,
-        details: `${qty} ${finalUnit} ${item.name}${clientName ? ` · for ${clientName}` : ""}`
+        details: `${qty} ${finalUnit} ${item.name}${clientName ? ` · for ${clientName}` : ""}`,
+        oldValue: { remaining_stock: Number(item.remaining_stock) },
+        newValue: {
+          remaining_stock: newStock,
+          change: `${signed > 0 ? "+" : ""}${signed} (base)`,
+          for_client: clientName ?? null,
+          note: note || null
+        }
       });
 
       reset();
@@ -97,8 +104,14 @@ export default function InventoryRow({
       const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase.from("inventory").delete().eq("id", item.id);
       if (error) { alert(error.message); return; }
-      await supabase.from("activity_logs").insert({
-        actor_id: user?.id, action: "deleted inventory item " + item.name, entity: "inventory"
+      await logActivity({
+        action: "deleted inventory item " + item.name, entity: "inventory", entity_id: item.id,
+        details: item.name,
+        oldValue: {
+          name: item.name,
+          item_type: item.item_type ?? null,
+          remaining_stock: Number(item.remaining_stock) || 0
+        }
       });
       router.refresh();
     });

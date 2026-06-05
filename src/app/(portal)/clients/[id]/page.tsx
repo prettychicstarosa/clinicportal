@@ -14,7 +14,7 @@ export default async function ClientProfile({ params }: { params: { id: string }
   const { data: client } = await supabase.from("clients").select("*").eq("id", params.id).single();
   if (!client) notFound();
 
-  const [{ data: appts }, { data: packages }, { data: payments }, { data: logs }] = await Promise.all([
+  const [{ data: appts }, { data: packages }, { data: logs }] = await Promise.all([
     supabase.from("appointments")
       .select("*, packages(name), creator:created_by(full_name)")
       .eq("client_id", params.id)
@@ -25,10 +25,6 @@ export default async function ClientProfile({ params }: { params: { id: string }
       .select("*")
       .eq("client_id", params.id)
       .order("created_at", { ascending: false }),
-    supabase.from("payments")
-      .select("*, profiles:created_by(full_name)")
-      .eq("client_id", params.id)
-      .order("created_at", { ascending: false }).limit(50),
     supabase.from("activity_logs")
       .select("*").eq("entity_id", params.id)
       .order("created_at", { ascending: false }).limit(20)
@@ -97,7 +93,6 @@ export default async function ClientProfile({ params }: { params: { id: string }
           <div className="flex flex-col gap-2">
             <Link href={`/packages/new?client=${client.id}`} className="btn-primary">Add Package</Link>
             <Link href={`/appointments/new?client=${client.id}`} className="btn-ghost">Schedule appointment</Link>
-            <Link href={`/payments/new?client=${client.id}`} className="btn-ghost">Record payment</Link>
           </div>
         </div>
       </div>
@@ -145,24 +140,6 @@ export default async function ClientProfile({ params }: { params: { id: string }
             </table>
           </div>
         )}
-      </Panel>
-
-      <Panel title="Payment History">
-        {(payments ?? []).length === 0
-          ? <Empty />
-          : <ul className="space-y-2 text-sm">
-              {payments!.map((p:any) => (
-                <li key={p.id} className="flex justify-between border-b py-2" style={{ borderColor: "var(--color-border)" }}>
-                  <div>
-                    <div>{formatDateTime(p.created_at)} · {p.method ?? "—"}</div>
-                    {p.profiles?.full_name && (
-                      <div className="text-xs" style={{ color: "var(--color-muted)" }}>by {p.profiles.full_name}</div>
-                    )}
-                  </div>
-                  <span className="font-medium">{formatCurrency(p.amount)}</span>
-                </li>
-              ))}
-            </ul>}
       </Panel>
 
       <Panel title="Appointment History">

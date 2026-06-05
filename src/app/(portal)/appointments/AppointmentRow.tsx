@@ -3,6 +3,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { logActivity } from "@/lib/activity-client";
 import { formatDate } from "@/lib/utils";
 
 const STATUSES = ["Scheduled", "Pending", "Done", "No Show", "Cancelled"] as const;
@@ -15,26 +16,61 @@ export default function AppointmentRow({ appt, isAdmin }: { appt: any; isAdmin: 
     start(async () => {
       const supabase = createSupabaseBrowserClient();
       const { data: { user } } = await supabase.auth.getUser();
+      const prevStatus = appt.status;
       const { error } = await supabase.from("appointments")
         .update({ status, updated_by: user?.id }).eq("id", appt.id);
       if (error) { alert(error.message); return; }
-      await supabase.from("activity_logs").insert({
-        actor_id: user?.id, action: `marked appointment ${status.toLowerCase()}`,
+      await logActivity({
+        action: `marked appointment ${status.toLowerCase()}`,
         entity: "appointment", entity_id: appt.id,
-        details: `${appt.clients?.full_name ?? ""} · ${formatDate(appt.date)}`
+        details: `${appt.clients?.full_name ?? ""} · ${formatDate(appt.date)} · ${prevStatus} → ${status}`,
+        oldValue: { status: prevStatus },
+        newValue: { status }
       });
       router.refresh();
     });
   }
   function onDelete() {
     if (!confirm("Delete this appointment?")) return;
+    const reason = window.prompt(
+      "Reason for deleting this schedule? (optional — kept in the Deleted Schedules log)"
+    );
+    if (reason === null) return; // Cancelled the prompt → abort delete.
     start(async () => {
       const supabase = createSupabaseBrowserClient();
       const { data: { user } } = await supabase.auth.getUser();
+
+      // Snapshot the schedule into the Deleted Schedules audit log BEFORE deleting.
+      await supabase.from("deleted_appointments").insert({
+        appointment_id: appt.id,
+        client_id: appt.client_id ?? null,
+        client_name: appt.clients?.full_name ?? null,
+        package_id: appt.package_id ?? null,
+        package_name: appt.packages?.name ?? appt.package_name ?? null,
+        treatment: appt.treatment ?? null,
+        original_date: appt.date ?? null,
+        original_time: appt.time ?? null,
+        status: appt.status ?? null,
+        notes: appt.notes ?? null,
+        reason: reason.trim() || null,
+        deleted_by: user?.id ?? null
+      });
+
       const { error } = await supabase.from("appointments").delete().eq("id", appt.id);
       if (error) { alert(error.message); return; }
-      await supabase.from("activity_logs").insert({
-        actor_id: user?.id, action: "deleted appointment", entity: "appointment"
+      await logActivity({
+        action: "deleted appointment", entity: "appointment",
+        entity_id: appt.id,
+        details: `${appt.clients?.full_name ?? ""} · ${formatDate(appt.date)}${reason.trim() ? ` · ${reason.trim()}` : ""}`,
+        oldValue: {
+          client: appt.clients?.full_name ?? null,
+          date: appt.date ?? null,
+          time: appt.time ?? null,
+          treatment: appt.treatment ?? null,
+          package: appt.packages?.name ?? appt.package_name ?? null,
+          status: appt.status ?? null
+        },
+        newValue: { reason: reason.trim() || null }
       });
       router.refresh();
     });

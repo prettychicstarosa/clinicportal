@@ -36,7 +36,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: { c
   const { data: allExpenses } = await supabase
     .from("expenses")
     .select("*")
-    .order("expense_date", { ascending: false })
+    .order("due_date", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(5000);
 

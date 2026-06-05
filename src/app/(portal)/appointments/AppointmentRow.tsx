@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/activity-client";
+import { recalcPackageSessions } from "@/lib/sessions-client";
 import { formatDate } from "@/lib/utils";
 
 const STATUSES = ["Scheduled", "Pending", "Done", "No Show", "Cancelled"] as const;
@@ -20,6 +21,8 @@ export default function AppointmentRow({ appt, isAdmin }: { appt: any; isAdmin: 
       const { error } = await supabase.from("appointments")
         .update({ status, updated_by: user?.id }).eq("id", appt.id);
       if (error) { alert(error.message); return; }
+      // Re-derive the package's session counts from the real schedule.
+      await recalcPackageSessions(appt.package_id);
       await logActivity({
         action: `marked appointment ${status.toLowerCase()}`,
         entity: "appointment", entity_id: appt.id,
@@ -58,16 +61,28 @@ export default function AppointmentRow({ appt, isAdmin }: { appt: any; isAdmin: 
 
       const { error } = await supabase.from("appointments").delete().eq("id", appt.id);
       if (error) { alert(error.message); return; }
+      // A deleted 'Done' session must free its slot back to the package.
+      await recalcPackageSessions(appt.package_id);
+      const pkgName = appt.packages?.name ?? appt.package_name ?? null;
+      const timeStr = appt.time ? String(appt.time).slice(0, 5) : "";
       await logActivity({
         action: "deleted appointment", entity: "appointment",
         entity_id: appt.id,
-        details: `${appt.clients?.full_name ?? ""} · ${formatDate(appt.date)}${reason.trim() ? ` · ${reason.trim()}` : ""}`,
+        // Rich, human-readable detail so the Deleted Schedules log is complete
+        // even on databases without the structured deleted_appointments table.
+        details: [
+          appt.clients?.full_name ?? "Unknown client",
+          `${formatDate(appt.date)}${timeStr ? " " + timeStr : ""}`,
+          pkgName ? `Package: ${pkgName}` : (appt.treatment ? `Treatment: ${appt.treatment}` : null),
+          `Status: ${appt.status ?? "—"}`,
+          reason.trim() ? `Reason: ${reason.trim()}` : null
+        ].filter(Boolean).join(" · "),
         oldValue: {
           client: appt.clients?.full_name ?? null,
           date: appt.date ?? null,
           time: appt.time ?? null,
           treatment: appt.treatment ?? null,
-          package: appt.packages?.name ?? appt.package_name ?? null,
+          package: pkgName,
           status: appt.status ?? null
         },
         newValue: { reason: reason.trim() || null }

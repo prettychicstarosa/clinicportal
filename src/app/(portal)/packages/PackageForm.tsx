@@ -3,6 +3,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/activity-client";
+import { recalcPackageSessions } from "@/lib/sessions-client";
 import { formatCurrency } from "@/lib/utils";
 
 type ClientLite = { id: string; full_name: string };
@@ -206,6 +207,9 @@ export default function PackageForm({
           updated_by: user?.id ?? null
         }).eq("id", initial!.client_id);
 
+        // Re-derive session counts from the (possibly changed) appointments.
+        await recalcPackageSessions(initial!.id);
+
         await logActivity({
           action: "edited package",
           entity: "package",
@@ -290,6 +294,9 @@ export default function PackageForm({
           details: `${sessions} appointments for ${f.name.trim()}`
         });
       }
+
+      // Initialise the derived session counts (0 used / full remaining).
+      await recalcPackageSessions(pkgId);
 
       await logActivity({
         action: "created package",

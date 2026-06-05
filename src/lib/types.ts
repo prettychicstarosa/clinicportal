@@ -106,8 +106,8 @@ export type Expense = {
   title: string;
   category: ExpenseCategory;
   amount: number;
+  // `due_date` doubles as the expense date used for monthly grouping.
   due_date: string | null;
-  expense_date: string | null;
   paid_status: "Paid" | "Unpaid" | "Partial";
   paid_amount: number;
   notes: string | null;

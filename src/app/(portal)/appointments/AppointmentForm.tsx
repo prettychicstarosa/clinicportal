@@ -3,6 +3,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/activity-client";
+import { recalcPackageSessions } from "@/lib/sessions-client";
 
 type Props = {
   mode: "create" | "edit";
@@ -87,6 +88,7 @@ export default function AppointmentForm({ mode, initial = {}, clients, packages 
             .select("id").single();
         }
         if (res.error) { setErr(res.error.message); return; }
+        await recalcPackageSessions(f.package_id || null);
         await logActivity({
           action: "scheduled appointment",
           entity: "appointment", entity_id: res.data!.id,
@@ -105,6 +107,12 @@ export default function AppointmentForm({ mode, initial = {}, clients, packages 
             .eq("id", initial.id);
         }
         if (res.error) { setErr(res.error.message); return; }
+        // Re-derive counts for the current package, and for the previous one
+        // if the appointment was moved to a different package.
+        await recalcPackageSessions(f.package_id || null);
+        if (initial.package_id && initial.package_id !== (f.package_id || null)) {
+          await recalcPackageSessions(initial.package_id);
+        }
         await logActivity({
           action: "updated appointment",
           entity: "appointment", entity_id: initial.id,

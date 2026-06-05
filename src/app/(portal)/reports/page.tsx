@@ -20,9 +20,10 @@ function monthLabel(ym: string): string {
   return `${MONTH_LABELS[idx] ?? m} ${y}`;
 }
 
-// Month key (YYYY-MM) for an expense, preferring expense_date then created_at.
+// Month key (YYYY-MM) for an expense. `due_date` is the expense date; fall
+// back to created_at.
 function expenseMonth(e: any): string {
-  const d = (e.expense_date as string | null) ?? (e.created_at as string | null) ?? "";
+  const d = (e.due_date as string | null) ?? (e.created_at as string | null) ?? "";
   return d.slice(0, 7);
 }
 
@@ -44,7 +45,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: { mo
     supabase.from("clients").select("payment_status"),
     supabase.from("packages").select("name, price, amount_paid, balance, payment_status").order("created_at", { ascending: false }).limit(200),
     supabase.from("inventory_logs").select("quantity, unit, action, created_at, inventory(name), profiles:performed_by(full_name), clients(full_name)").eq("action", "consume").order("created_at", { ascending: false }).limit(50),
-    supabase.from("expenses").select("category, amount, expense_date, created_at").limit(5000),
+    supabase.from("expenses").select("category, amount, due_date, created_at").limit(5000),
     supabase.from("activity_logs").select("actor_name, action, entity, created_at").order("created_at", { ascending: false }).limit(50)
   ]);
 

@@ -22,9 +22,9 @@ function monthLabel(ym: string): string {
   return `${MONTH_LABELS[Number(m) - 1] ?? m} ${y}`;
 }
 
-// Month key (YYYY-MM), preferring expense_date then created_at.
+// Month key (YYYY-MM). `due_date` is the expense date; fall back to created_at.
 function expMonth(e: any): string {
-  const d = (e.expense_date as string | null) ?? (e.created_at as string | null) ?? "";
+  const d = (e.due_date as string | null) ?? (e.created_at as string | null) ?? "";
   return d.slice(0, 7);
 }
 
@@ -147,13 +147,13 @@ export default async function ExpensesPage({ searchParams }: { searchParams: { c
                   <td className="table-td">{e.category}</td>
                   <td className="table-td">{formatCurrency(e.amount)}</td>
                   <td className="table-td">{formatCurrency(e.paid_amount)}</td>
-                  <td className="table-td">{formatDate(e.expense_date ?? e.due_date ?? e.created_at)}</td>
+                  <td className="table-td">{formatDate(e.due_date ?? e.created_at)}</td>
                   <td className="table-td"><span className={"badge " + (e.paid_status==="Paid"?"badge-green":e.paid_status==="Partial"?"badge-amber":"badge-red")}>{e.paid_status}</span></td>
                   <td className="table-td max-w-[220px] truncate">{e.notes ?? "—"}</td>
                   <td className="table-td text-right">
                     <div className="flex gap-2 justify-end">
                       <Link href={`/expenses/${e.id}/edit`} className="text-xs underline">Edit</Link>
-                      {profile.role === "admin" && <DeleteExpenseButton id={e.id} title={e.title} expense={{ category: e.category, amount: e.amount, expense_date: e.expense_date }} />}
+                      {profile.role === "admin" && <DeleteExpenseButton id={e.id} title={e.title} expense={{ category: e.category, amount: e.amount, due_date: e.due_date }} />}
                     </div>
                   </td>
                 </tr>

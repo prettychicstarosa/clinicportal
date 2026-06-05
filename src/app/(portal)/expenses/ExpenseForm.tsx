@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/activity-client";
 
-const CATEGORIES = ["Rent","Salary","Supplies","Marketing","Utilities","Maintenance","Other"];
+const CATEGORIES = ["Rent","Salary","Supplies","Utilities","Marketing","Maintenance","Other"];
 const STATUSES = ["Paid","Unpaid","Partial"];
 
 function todayStr() {
@@ -19,8 +19,8 @@ export default function ExpenseForm({ mode, initial = {} as any }: { mode: "crea
     title: initial.title ?? "",
     category: initial.category ?? "Supplies",
     amount: initial.amount ?? 0,
-    expense_date: initial.expense_date ?? initial.due_date ?? todayStr(),
-    due_date: initial.due_date ?? "",
+    // `due_date` is the expense's date (used for monthly grouping).
+    due_date: initial.due_date ?? todayStr(),
     paid_status: initial.paid_status ?? "Unpaid",
     paid_amount: initial.paid_amount ?? 0,
     notes: initial.notes ?? ""
@@ -34,24 +34,39 @@ export default function ExpenseForm({ mode, initial = {} as any }: { mode: "crea
       const supabase = createSupabaseBrowserClient();
       const { data: { user } } = await supabase.auth.getUser();
       const payload: any = {
-        ...f,
+        title: f.title,
+        category: f.category,
         amount: Number(f.amount) || 0,
+        paid_status: f.paid_status,
         paid_amount: Number(f.paid_amount) || 0,
-        expense_date: f.expense_date || todayStr(),
-        due_date: f.due_date || null
+        notes: f.notes,
+        due_date: f.due_date || todayStr()
       };
+
       const snap = (src: any) => ({
         title: src.title ?? null,
         category: src.category ?? null,
         amount: Number(src.amount) || 0,
-        expense_date: src.expense_date ?? null,
+        date: src.due_date ?? null,
         paid_status: src.paid_status ?? null,
         paid_amount: Number(src.paid_amount) || 0
       });
+
+      // Friendly message if the database's category CHECK constraint hasn't
+      // been widened to include this category yet.
+      const isCategoryConstraint = (e: any) =>
+        !!e && (e.code === "23514" ||
+          (typeof e.message === "string" && e.message.toLowerCase().includes("category_check")));
+
       if (mode === "create") {
         payload.created_by = user?.id ?? null;
         const { data, error } = await supabase.from("expenses").insert(payload).select("id").single();
-        if (error) { setErr(error.message); return; }
+        if (error) {
+          setErr(isCategoryConstraint(error)
+            ? `Your database doesn't allow the "${f.category}" category yet. Pick another category, or apply supabase/RUN_PENDING_MIGRATIONS.sql to enable it.`
+            : error.message);
+          return;
+        }
         await logActivity({
           action: "added expense " + f.title, entity: "expense", entity_id: data!.id,
           details: `${f.category} · ${f.title}`,
@@ -59,7 +74,12 @@ export default function ExpenseForm({ mode, initial = {} as any }: { mode: "crea
         });
       } else {
         const { error } = await supabase.from("expenses").update(payload).eq("id", initial.id);
-        if (error) { setErr(error.message); return; }
+        if (error) {
+          setErr(isCategoryConstraint(error)
+            ? `Your database doesn't allow the "${f.category}" category yet. Pick another category, or apply supabase/RUN_PENDING_MIGRATIONS.sql to enable it.`
+            : error.message);
+          return;
+        }
         await logActivity({
           action: "updated expense " + f.title, entity: "expense", entity_id: initial.id,
           details: `${f.category} · ${f.title}`,
@@ -83,10 +103,8 @@ export default function ExpenseForm({ mode, initial = {} as any }: { mode: "crea
       <div><label className="label">Amount</label>
         <input type="number" step="0.01" className="input" value={f.amount} onChange={e => set("amount", e.target.value)} /></div>
       <div><label className="label">Expense Date</label>
-        <input type="date" className="input" value={f.expense_date ?? ""} onChange={e => set("expense_date", e.target.value)} />
+        <input type="date" className="input" value={f.due_date ?? ""} onChange={e => set("due_date", e.target.value)} />
         <p className="text-xs mt-1" style={{ color: "var(--color-muted)" }}>Used for monthly totals and reports.</p></div>
-      <div><label className="label">Due Date</label>
-        <input type="date" className="input" value={f.due_date ?? ""} onChange={e => set("due_date", e.target.value)} /></div>
       <div><label className="label">Paid Status</label>
         <select className="input" value={f.paid_status} onChange={e => set("paid_status", e.target.value)}>
           {STATUSES.map(s => <option key={s}>{s}</option>)}

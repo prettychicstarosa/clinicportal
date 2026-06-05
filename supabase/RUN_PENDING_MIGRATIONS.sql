@@ -10,7 +10,8 @@
 --        * Client balance + payment status rolled up from packages
 --          (so they stay correct without the removed Payments module).
 -- 0013 — Deleted Schedules audit log (who/what/when/why).
--- 0014 — Expense "Maintenance" category + expense_date for monthly views.
+-- 0014 — Expense "Maintenance" category (the only change needed for the app
+--        to function; everything else below is optional enhancement).
 -- 0015 — Structured audit trail (old_value / new_value on activity_logs).
 -- =========================================================
 
@@ -195,23 +196,15 @@ create policy deleted_appts_insert on public.deleted_appointments
 
 
 -- =========================================================
--- 0014 — EXPENSE CATEGORIES + MONTHLY GROUPING
+-- 0014 — EXPENSE CATEGORIES (adds "Maintenance")
+-- The app groups expenses by month using the existing due_date column,
+-- so no extra date column is needed.
 -- =========================================================
 alter table public.expenses
   drop constraint if exists expenses_category_check;
 alter table public.expenses
   add constraint expenses_category_check
   check (category in ('Rent','Salary','Supplies','Marketing','Utilities','Maintenance','Other'));
-
-alter table public.expenses
-  add column if not exists expense_date date;
-update public.expenses
-  set expense_date = coalesce(due_date, created_at::date)
-  where expense_date is null;
-alter table public.expenses
-  alter column expense_date set default current_date;
-create index if not exists expenses_expense_date_idx
-  on public.expenses (expense_date);
 
 -- Drop the obsolete staff_permissions.payments column (Payments module removed).
 do $$

@@ -11,7 +11,7 @@ export default function DeleteExpenseButton({
 }: {
   id: string;
   title: string;
-  expense?: { category?: string; amount?: number; expense_date?: string | null };
+  expense?: { category?: string; amount?: number; due_date?: string | null };
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -28,7 +28,7 @@ export default function DeleteExpenseButton({
           title,
           category: expense?.category ?? null,
           amount: expense?.amount ?? null,
-          expense_date: expense?.expense_date ?? null
+          date: expense?.due_date ?? null
         }
       });
       router.refresh();

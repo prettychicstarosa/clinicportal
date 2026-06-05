@@ -18,9 +18,8 @@ export default async function DashboardPage() {
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
-  // First day of the current month as a plain date (YYYY-MM-01) for the
-  // date-typed expense_date column.
-  const monthStartDate = `${currentYear}-${String(currentMonth).padStart(2, "0")}-01`;
+  // YYYY-MM for grouping this month's expenses by their date.
+  const currentYM = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
 
   // Current week range (Monday → Sunday), matching the Appointments page filter.
   const fmt = (d: Date) =>
@@ -40,7 +39,7 @@ export default async function DashboardPage() {
     supabase.from("clients").select("*", { count: "exact", head: true }),
     supabase.from("appointments").select("*", { count: "exact", head: true }).eq("date", today),
     supabase.from("packages").select("*", { count: "exact", head: true }).eq("status", "Active"),
-    supabase.from("expenses").select("amount, expense_date, created_at").gte("expense_date", monthStartDate),
+    supabase.from("expenses").select("amount, due_date, created_at").limit(5000),
     supabase.from("clients").select("balance"),
     supabase.from("inventory").select("*", { count: "exact", head: true }).in("stock_status", ["Low Stock", "Out of Stock"]),
     supabase.from("income").select("week1,week2,week3,week4,week5").eq("month", currentMonth).eq("year", currentYear).maybeSingle(),
@@ -51,7 +50,10 @@ export default async function DashboardPage() {
     supabase.from("appointments").select("*", { count: "exact", head: true }).eq("status", "Done").eq("date", today)
   ]);
 
-  const expensesSum = (monthExpenses.data ?? []).reduce((a, b) => a + Number(b.amount || 0), 0);
+  // Sum this month's expenses by their date (due_date, falling back to created_at).
+  const expensesSum = (monthExpenses.data ?? [])
+    .filter((b: any) => ((b.due_date ?? b.created_at ?? "") as string).slice(0, 7) === currentYM)
+    .reduce((a, b) => a + Number(b.amount || 0), 0);
   const receivableSum = (receivable.data ?? []).reduce((a, b) => a + Number(b.balance || 0), 0);
   const inc = monthIncome.data as any | null;
   const manualIncomeSum = inc
